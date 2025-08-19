@@ -1,12 +1,11 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
-import { createClient } from '@supabase/supabase-js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import ExcelJS from 'exceljs';
 import { supabaseMiddleware } from './supabaseMiddleware'
-//import serverless from 'serverless-http';
+import serverless from 'serverless-http';
 
 dotenv.config();
 
@@ -30,6 +29,9 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+// ¡AGREGAR ESTA LÍNEA! Aplica el middleware antes de las rutas.
+app.use(supabaseMiddleware);
 
 // 2. Aquí van todas tus rutas (endpoints)
 // Endpoint de prueba
@@ -291,4 +293,4 @@ app.post('/admin/grant-invitation-access', authenticateToken, async (req, res) =
 
 // 3. Exportación final para Vercel
 // Esta línea es crucial para que Vercel encuentre y ejecute la aplicación.
-export default (app); //serverless(app);
+export default serverless(app);
