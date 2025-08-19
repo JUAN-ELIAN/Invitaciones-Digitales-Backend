@@ -1,0 +1,18 @@
+{
+  "functions": {
+    "api/index.ts": {
+      "runtime": "nodejs22.x"
+    }
+  },
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/api/index.ts"
+    }
+  ],
+  "build": {
+    "env": {
+      "NODE_ENV": "production"
+    }
+  }
+}
