@@ -1,7 +1,7 @@
 {
   "builds": [
     {
-      "src": "backend/api/index.ts",
+      "src": "/api/index.ts",
       "use": "@vercel/node",
       "config": {
         "includeFiles": [
@@ -13,7 +13,7 @@
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "backend/api/index.ts"
+      "dest": "/api/index.ts"
     }
   ]
 }
