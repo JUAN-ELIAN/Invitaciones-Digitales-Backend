@@ -23,6 +23,9 @@ interface Rsvp {
 const app = express();
 const router = express.Router();
 
+router.get('/', (_req, res) => {
+  res.json({ message: 'Bienvenido a la API' });
+});
 
 app.use(cors({
   origin: 'https://invitaciones-digitales-frontend.vercel.app',
@@ -32,13 +35,11 @@ app.use(cors({
 
 app.use(express.json());
 
-// ¡AGREGAR ESTA LÍNEA! Aplica el middleware antes de las rutas.
+// Aplica el middleware antes de las rutas.
 app.use(supabaseMiddleware);
 
-// 2. Aquí van todas tus rutas (endpoints)
 // Endpoint de prueba
-router.get('/test', (_req, res) => {
-  const supabase = (_req as any).supabase;
+router.get('/test', (_req, res) => { 
   res.json({ message: 'Backend funcionando correctamente' });
 });
 
