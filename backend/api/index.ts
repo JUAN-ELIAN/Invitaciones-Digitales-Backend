@@ -406,8 +406,7 @@ app.post('/admin/grant-invitation-access', authenticateToken, async (req, res) =
   }
 });
 
-const handler = serverless(app);
-export { handler };
+export default serverless(app);
 
 console.log('DEBUG Backend: App Express inicializada.');
 
