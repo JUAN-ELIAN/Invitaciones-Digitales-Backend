@@ -21,6 +21,8 @@ interface Rsvp {
 }
 
 const app = express();
+const router = express.Router();
+
 
 app.use(cors({
   origin: 'https://invitaciones-digitales-frontend.vercel.app',
@@ -35,13 +37,13 @@ app.use(supabaseMiddleware);
 
 // 2. Aquí van todas tus rutas (endpoints)
 // Endpoint de prueba
-app.get('/test', (_req, res) => {
+router.get('/test', (_req, res) => {
   const supabase = (_req as any).supabase;
   res.json({ message: 'Backend funcionando correctamente' });
 });
 
 // Endpoint para registrar una nueva solicitud de acceso
-app.post('/register', async (req, res) => {
+router.post('/register', async (req, res) => {
   const { email, password } = req.body;
   const supabase = (req as any).supabase;
   if (!email || !password) {
@@ -71,7 +73,7 @@ app.post('/register', async (req, res) => {
 });
 
 // Endpoint para iniciar sesión
-app.post('/login', async (req, res) => {
+router.post('/login', async (req, res) => {
   const { email, password, access_token } = req.body;
   const supabase = (req as any).supabase;
   if (!email || !password || !access_token) {
@@ -105,7 +107,7 @@ app.post('/login', async (req, res) => {
   }
 });
 
-app.get('/invitation/:urlId', async (req, res) => {
+router.get('/invitation/:urlId', async (req, res) => {
   const { urlId } = req.params;
   const supabase = (req as any).supabase;
   try {
@@ -122,7 +124,7 @@ app.get('/invitation/:urlId', async (req, res) => {
   }
 });
 
-app.post('/rsvp', async (req, res) => {
+router.post('/rsvp', async (req, res) => {
   const { invitation_id, names, participants_count, email, phone, observations, confirmed_attendance, not_attending } = req.body;
   if (!invitation_id || !names || !participants_count || !email || (confirmed_attendance === undefined && not_attending === undefined)) {
     return res.status(400).json({ error: 'Faltan campos obligatorios para la confirmación de asistencia.' });
@@ -142,7 +144,7 @@ app.post('/rsvp', async (req, res) => {
   }
 });
 
-app.get('/rsvps/:invitationId', async (req, res) => {
+router.get('/rsvps/:invitationId', async (req, res) => {
   const { invitationId } = req.params;
   const supabase = (req as any).supabase;
   try {
@@ -156,7 +158,7 @@ app.get('/rsvps/:invitationId', async (req, res) => {
   }
 });
 
-app.get('/rsvps/download/:invitationId', async (req, res) => {
+router.get('/rsvps/download/:invitationId', async (req, res) => {
   const { invitationId } = req.params;
   const supabase = (req as any).supabase;
   try {
@@ -224,12 +226,12 @@ const authenticateToken = (req: express.Request, res: express.Response, next: ex
 };
 
 // Ruta protegida de ejemplo
-app.get('/protected', authenticateToken, (req, res) => {
+router.get('/protected', authenticateToken, (req, res) => {
   res.json({ message: 'Acceso a ruta protegida concedido', user: (req as any).user });
 });
 
 // Nuevo endpoint para obtener las invitaciones del usuario autenticado
-app.get('/my-invitations', authenticateToken, async (req, res) => {
+router.get('/my-invitations', authenticateToken, async (req, res) => {
   try {
     const userId = (req as any).user.userId;
     const supabase = (req as any).supabase;
@@ -252,7 +254,7 @@ app.get('/my-invitations', authenticateToken, async (req, res) => {
 });
 
 // Nuevo endpoint para otorgar acceso a invitaciones
-app.post('/admin/grant-invitation-access', authenticateToken, async (req, res) => {
+router.post('/admin/grant-invitation-access', authenticateToken, async (req, res) => {
   const { targetUserId, invitationId } = req.body;
   if (!targetUserId || !invitationId) {
     return res.status(400).json({ error: 'targetUserId e invitationId son requeridos.' });
@@ -291,6 +293,9 @@ app.post('/admin/grant-invitation-access', authenticateToken, async (req, res) =
   }
 });
 
-// 3. Exportación final para Vercel
+// Montar el enrutador en el path '/api'
+app.use('/api', router);
+
+// Exportación final para Vercel
 // Esta línea es crucial para que Vercel encuentre y ejecute la aplicación.
 export default serverless(app);
