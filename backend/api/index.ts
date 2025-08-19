@@ -14,14 +14,15 @@ dotenv.config();
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
 
+let supabase: any;
 if (!supabaseUrl || !supabaseKey) {
   console.error('ERROR Backend: SUPABASE_URL o SUPABASE_ANON_KEY no están definidos.');
-  // Terminar el proceso si no se pueden obtener las variables.
-  process.exit(1); 
+  // No salimos del proceso, solo mostramos el error.
+} else {
+  supabase = createClient(supabaseUrl, supabaseKey);
+  console.log('DEBUG Backend: Supabase cliente inicializado.');
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey);
-console.log('DEBUG Backend: Supabase cliente inicializado.');
 
 // Interfaces
 interface Rsvp {
@@ -60,6 +61,9 @@ app.get('/test', (_req, res) => {
 
 // Endpoint para registrar una nueva solicitud de acceso
 app.post('/register', async (req, res) => {
+  if (!supabase) {
+    return res.status(500).json({ error: 'El cliente de Supabase no se inicializó correctamente. Revisa las variables de entorno.' });
+  }
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'Email y contraseña son requeridos.' });
@@ -89,6 +93,9 @@ app.post('/register', async (req, res) => {
 
 // Endpoint para iniciar sesión
 app.post('/login', async (req, res) => {
+  if (!supabase) {
+    return res.status(500).json({ error: 'El cliente de Supabase no se inicializó correctamente. Revisa las variables de entorno.' });
+  }
   const { email, password, access_token } = req.body;
   if (!email || !password || !access_token) {
     return res.status(400).json({ error: 'Email, contraseña y token de acceso son requeridos.' });
@@ -122,6 +129,9 @@ app.post('/login', async (req, res) => {
 });
 
 app.get('/invitation/:urlId', async (req, res) => {
+  if (!supabase) {
+    return res.status(500).json({ error: 'El cliente de Supabase no se inicializó correctamente. Revisa las variables de entorno.' });
+  }
   const { urlId } = req.params;
   try {
     const { data, error } = await supabase.from('invitations').select('*').eq('url_id', urlId).single();
@@ -138,6 +148,9 @@ app.get('/invitation/:urlId', async (req, res) => {
 });
 
 app.post('/rsvp', async (req, res) => {
+  if (!supabase) {
+    return res.status(500).json({ error: 'El cliente de Supabase no se inicializó correctamente. Revisa las variables de entorno.' });
+  }
   const { invitation_id, names, participants_count, email, phone, observations, confirmed_attendance, not_attending } = req.body;
   if (!invitation_id || !names || !participants_count || !email || (confirmed_attendance === undefined && not_attending === undefined)) {
     return res.status(400).json({ error: 'Faltan campos obligatorios para la confirmación de asistencia.' });
@@ -157,6 +170,9 @@ app.post('/rsvp', async (req, res) => {
 });
 
 app.get('/rsvps/:invitationId', async (req, res) => {
+  if (!supabase) {
+    return res.status(500).json({ error: 'El cliente de Supabase no se inicializó correctamente. Revisa las variables de entorno.' });
+  }
   const { invitationId } = req.params;
   try {
     const { data, error } = await supabase.from('rsvps').select('*').eq('invitation_id', invitationId);
@@ -170,6 +186,9 @@ app.get('/rsvps/:invitationId', async (req, res) => {
 });
 
 app.get('/rsvps/download/:invitationId', async (req, res) => {
+  if (!supabase) {
+    return res.status(500).json({ error: 'El cliente de Supabase no se inicializó correctamente. Revisa las variables de entorno.' });
+  }
   const { invitationId } = req.params;
   try {
     const { data: rsvps, error } = await supabase.from('rsvps').select('*').eq('invitation_id', invitationId);
@@ -242,6 +261,9 @@ app.get('/protected', authenticateToken, (req, res) => {
 
 // Nuevo endpoint para obtener las invitaciones del usuario autenticado
 app.get('/my-invitations', authenticateToken, async (req, res) => {
+  if (!supabase) {
+    return res.status(500).json({ error: 'El cliente de Supabase no se inicializó correctamente. Revisa las variables de entorno.' });
+  }
   try {
     const userId = (req as any).user.userId;
     const { data: userData, error: userError } = await supabase.from('users').select('accessible_invitations').eq('id', userId).single();
@@ -264,6 +286,9 @@ app.get('/my-invitations', authenticateToken, async (req, res) => {
 
 // Nuevo endpoint para otorgar acceso a invitaciones
 app.post('/admin/grant-invitation-access', authenticateToken, async (req, res) => {
+  if (!supabase) {
+    return res.status(500).json({ error: 'El cliente de Supabase no se inicializó correctamente. Revisa las variables de entorno.' });
+  }
   const { targetUserId, invitationId } = req.body;
   if (!targetUserId || !invitationId) {
     return res.status(400).json({ error: 'targetUserId e invitationId son requeridos.' });
@@ -304,4 +329,3 @@ app.post('/admin/grant-invitation-access', authenticateToken, async (req, res) =
 // 3. Exportación final para Vercel
 // Esta línea es crucial para que Vercel encuentre y ejecute la aplicación.
 export default serverless(app);
-
