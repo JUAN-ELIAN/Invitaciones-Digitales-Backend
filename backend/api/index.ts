@@ -14,8 +14,10 @@ dotenv.config();
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
 
-if (!supabaseUrl || !supabaseKey) {  
-  throw new Error('Supabase URL o KEY no están definidos en las variables de entorno.'); 
+if (!supabaseUrl || !supabaseKey) {
+  console.error('ERROR Backend: SUPABASE_URL o SUPABASE_ANON_KEY no están definidos.');
+  // Terminar el proceso si no se pueden obtener las variables.
+  process.exit(1); 
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
