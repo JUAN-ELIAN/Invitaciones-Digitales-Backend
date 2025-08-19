@@ -9,20 +9,21 @@ import serverless from 'serverless-http';
 
 dotenv.config();
 
-// 1. Configuración de Supabase
+// 1. Inicialización de Supabase: esta es la parte más crítica.
+//    Se inicializa de forma inmediata al cargar la función.
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
   console.error('ERROR Backend: SUPABASE_URL o SUPABASE_ANON_KEY no están definidos.');
-  // Salir del proceso si las variables no están definidas.
-  // Esto previene que la aplicación se inicie si no puede conectarse a la base de datos.
+  // Terminar el proceso si no se pueden obtener las variables.
   process.exit(1); 
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 console.log('DEBUG Backend: Supabase cliente inicializado.');
 
+// Interfaces
 interface Rsvp {
   names: string | string[];
   participants_count: number;
@@ -48,13 +49,6 @@ app.use(express.json());
 app.get('/test', (_req, res) => {
   res.json({ message: 'Backend funcionando correctamente' });
 });
-
-// Configuración de Cloudinary (comentada temporalmente)
-// cloudinary.v2.config({
-//   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-//   api_key: process.env.CLOUDINARY_API_KEY,
-//   api_secret: process.env.CLOUDINARY_API_SECRET,
-// });
 
 // Endpoint para registrar una nueva solicitud de acceso
 app.post('/register', async (req, res) => {
@@ -300,4 +294,5 @@ app.post('/admin/grant-invitation-access', authenticateToken, async (req, res) =
 });
 
 // 3. Exportación final para Vercel
+// Esta línea es crucial para que Vercel encuentre y ejecute la aplicación.
 export default serverless(app);
