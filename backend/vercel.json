@@ -1,5 +1,13 @@
 {
-"functions": {
+  "version": 2,
+  "name": "invitaciones-digitales-backend",
+  "builds": [
+    {
+      "src": "api/index.ts",
+      "use": "@vercel/node"
+    }
+  ],
+  "functions": {
     "api/index.ts": {
       "runtime": "nodejs22.x"
     }
