@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import ExcelJS from 'exceljs';
-import serverless from 'serverless-http';
+//import serverless from 'serverless-http';
 
 dotenv.config();
 
@@ -295,4 +295,4 @@ app.post('/admin/grant-invitation-access', authenticateToken, async (req, res) =
 
 // 3. Exportación final para Vercel
 // Esta línea es crucial para que Vercel encuentre y ejecute la aplicación.
-export default serverless(app);
+export default (app); //serverless(app);
