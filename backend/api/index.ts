@@ -14,10 +14,8 @@ dotenv.config();
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
 
-if (!supabaseUrl || !supabaseKey) {
-  console.error('ERROR Backend: SUPABASE_URL o SUPABASE_ANON_KEY no están definidos.');
-  // Terminar el proceso si no se pueden obtener las variables.
-  process.exit(1); 
+if (!supabaseUrl || !supabaseKey) {  
+  throw new Error('Supabase URL o KEY no están definidos en las variables de entorno.'); 
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -43,6 +41,13 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+app.options('*', (_req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', 'https://invitaciones-digitales-frontend.vercel.app');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.sendStatus(200);
+});
 
 // 2. Aquí van todas tus rutas (endpoints)
 // Endpoint de prueba
@@ -295,4 +300,4 @@ app.post('/admin/grant-invitation-access', authenticateToken, async (req, res) =
 
 // 3. Exportación final para Vercel
 // Esta línea es crucial para que Vercel encuentre y ejecute la aplicación.
-export default serverless(app);
+export const handler = serverless(app);
