@@ -5,23 +5,10 @@ import { createClient } from '@supabase/supabase-js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import ExcelJS from 'exceljs';
+import { supabaseMiddleware } from './supabaseMiddleware'
 //import serverless from 'serverless-http';
 
 dotenv.config();
-
-// 1. Inicialización de Supabase: esta es la parte más crítica.
-//    Se inicializa de forma inmediata al cargar la función.
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  console.error('ERROR Backend: SUPABASE_URL o SUPABASE_ANON_KEY no están definidos.');
-  // Terminar el proceso si no se pueden obtener las variables.
-  process.exit(1); 
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
-console.log('DEBUG Backend: Supabase cliente inicializado.');
 
 // Interfaces
 interface Rsvp {
@@ -47,12 +34,14 @@ app.use(express.json());
 // 2. Aquí van todas tus rutas (endpoints)
 // Endpoint de prueba
 app.get('/test', (_req, res) => {
+  const supabase = (_req as any).supabase;
   res.json({ message: 'Backend funcionando correctamente' });
 });
 
 // Endpoint para registrar una nueva solicitud de acceso
 app.post('/register', async (req, res) => {
   const { email, password } = req.body;
+  const supabase = (req as any).supabase;
   if (!email || !password) {
     return res.status(400).json({ error: 'Email y contraseña son requeridos.' });
   }
@@ -82,6 +71,7 @@ app.post('/register', async (req, res) => {
 // Endpoint para iniciar sesión
 app.post('/login', async (req, res) => {
   const { email, password, access_token } = req.body;
+  const supabase = (req as any).supabase;
   if (!email || !password || !access_token) {
     return res.status(400).json({ error: 'Email, contraseña y token de acceso son requeridos.' });
   }
@@ -115,6 +105,7 @@ app.post('/login', async (req, res) => {
 
 app.get('/invitation/:urlId', async (req, res) => {
   const { urlId } = req.params;
+  const supabase = (req as any).supabase;
   try {
     const { data, error } = await supabase.from('invitations').select('*').eq('url_id', urlId).single();
     if (error) {
@@ -136,6 +127,7 @@ app.post('/rsvp', async (req, res) => {
   }
 
   try {
+    const supabase = (req as any).supabase;
     const { data, error } = await supabase
       .from('rsvps')
       .insert([{ invitation_id, names, participants_count, email, phone, observations, confirmed_attendance, not_attending }]);
@@ -150,6 +142,7 @@ app.post('/rsvp', async (req, res) => {
 
 app.get('/rsvps/:invitationId', async (req, res) => {
   const { invitationId } = req.params;
+  const supabase = (req as any).supabase;
   try {
     const { data, error } = await supabase.from('rsvps').select('*').eq('invitation_id', invitationId);
     if (error) {
@@ -163,6 +156,7 @@ app.get('/rsvps/:invitationId', async (req, res) => {
 
 app.get('/rsvps/download/:invitationId', async (req, res) => {
   const { invitationId } = req.params;
+  const supabase = (req as any).supabase;
   try {
     const { data: rsvps, error } = await supabase.from('rsvps').select('*').eq('invitation_id', invitationId);
     if (error) {
@@ -236,6 +230,7 @@ app.get('/protected', authenticateToken, (req, res) => {
 app.get('/my-invitations', authenticateToken, async (req, res) => {
   try {
     const userId = (req as any).user.userId;
+    const supabase = (req as any).supabase;
     const { data: userData, error: userError } = await supabase.from('users').select('accessible_invitations').eq('id', userId).single();
     if (userError || !userData) {
       return res.status(404).json({ error: 'Datos de usuario no encontrados.' });
@@ -263,6 +258,7 @@ app.post('/admin/grant-invitation-access', authenticateToken, async (req, res) =
 
   try {
     const requestingUser = (req as any).user.userId;
+    const supabase = (req as any).supabase;
     const { data: invitation, error: invitationError } = await supabase.from('invitations').select('user_id').eq('id', invitationId).single();
     if (invitationError || !invitation) {
       return res.status(404).json({ error: 'Invitación no encontrada.' });
