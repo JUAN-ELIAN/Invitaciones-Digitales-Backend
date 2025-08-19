@@ -42,6 +42,7 @@ app.use(cors({
 
 app.use(express.json());
 
+app.options('*', cors());
 app.options('*', (_req, res) => {
   res.setHeader('Access-Control-Allow-Origin', 'https://invitaciones-digitales-frontend.vercel.app');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -300,4 +301,5 @@ app.post('/admin/grant-invitation-access', authenticateToken, async (req, res) =
 
 // 3. Exportación final para Vercel
 // Esta línea es crucial para que Vercel encuentre y ejecute la aplicación.
-export const handler = serverless(app);
+export default serverless(app);
+
