@@ -44,7 +44,7 @@ app.use(cors({
 
 app.use(express.json());
 
-app.options('*', cors());
+// Esto es necesario para que las solicitudes OPTIONS funcionen correctamente.
 app.options('*', (_req, res) => {
   res.setHeader('Access-Control-Allow-Origin', 'https://invitaciones-digitales-frontend.vercel.app');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
