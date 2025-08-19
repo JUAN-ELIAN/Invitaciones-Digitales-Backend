@@ -9,10 +9,5 @@
       "src": "/(.*)",
       "dest": "/api/index.ts"
     }
-  ],
-  "build": {
-    "env": {
-      "NODE_ENV": "production"
-    }
-  }
+  ]
 }
