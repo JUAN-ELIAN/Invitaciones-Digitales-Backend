@@ -2,13 +2,26 @@ import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import { createClient } from '@supabase/supabase-js';
-// import cloudinary from 'cloudinary'; // Comentado temporalmente
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import ExcelJS from 'exceljs';
 import serverless from 'serverless-http';
 
 dotenv.config();
+
+// 1. Configuración de Supabase
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error('ERROR Backend: SUPABASE_URL o SUPABASE_ANON_KEY no están definidos.');
+  // Salir del proceso si las variables no están definidas.
+  // Esto previene que la aplicación se inicie si no puede conectarse a la base de datos.
+  process.exit(1); 
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
+console.log('DEBUG Backend: Supabase cliente inicializado.');
 
 interface Rsvp {
   names: string | string[];
@@ -30,21 +43,11 @@ app.use(cors({
 
 app.use(express.json());
 
-// Configuración de Supabase
-let supabase: any;
-try {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseKey) {
-    console.error('ERROR Backend: SUPABASE_URL o SUPABASE_ANON_KEY no están definidos en las variables de entorno.');
-  } else {
-    supabase = createClient(supabaseUrl, supabaseKey);
-    console.log('DEBUG Backend: Supabase cliente inicializado.');
-  }
-} catch (error: any) {
-  console.error('ERROR Backend: Error al inicializar Supabase:', error.message);
-}
+// 2. Aquí van todas tus rutas (endpoints)
+// Endpoint de prueba
+app.get('/test', (_req, res) => {
+  res.json({ message: 'Backend funcionando correctamente' });
+});
 
 // Configuración de Cloudinary (comentada temporalmente)
 // cloudinary.v2.config({
@@ -55,9 +58,6 @@ try {
 
 // Endpoint para registrar una nueva solicitud de acceso
 app.post('/register', async (req, res) => {
-  if (!supabase) { // <-- LÍNEA AGREGADA
-    return res.status(500).json({ error: 'Error del servidor: Conexión a la base de datos no disponible.' });
-  } // <-- LÍNEA AGREGADA
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'Email y contraseña son requeridos.' });
@@ -87,9 +87,6 @@ app.post('/register', async (req, res) => {
 
 // Endpoint para iniciar sesión
 app.post('/login', async (req, res) => {
-  if (!supabase) { // <-- LÍNEA AGREGADA
-    return res.status(500).json({ error: 'Error del servidor: Conexión a la base de datos no disponible.' });
-  } // <-- LÍNEA AGREGADA
   const { email, password, access_token } = req.body;
   if (!email || !password || !access_token) {
     return res.status(400).json({ error: 'Email, contraseña y token de acceso son requeridos.' });
@@ -123,9 +120,6 @@ app.post('/login', async (req, res) => {
 });
 
 app.get('/invitation/:urlId', async (req, res) => {
-  if (!supabase) { // <-- LÍNEA AGREGADA
-    return res.status(500).json({ error: 'Error del servidor: Conexión a la base de datos no disponible.' });
-  } // <-- LÍNEA AGREGADA
   const { urlId } = req.params;
   try {
     const { data, error } = await supabase.from('invitations').select('*').eq('url_id', urlId).single();
@@ -142,9 +136,6 @@ app.get('/invitation/:urlId', async (req, res) => {
 });
 
 app.post('/rsvp', async (req, res) => {
-  if (!supabase) { // <-- LÍNEA AGREGADA
-    return res.status(500).json({ error: 'Error del servidor: Conexión a la base de datos no disponible.' });
-  } // <-- LÍNEA AGREGADA
   const { invitation_id, names, participants_count, email, phone, observations, confirmed_attendance, not_attending } = req.body;
   if (!invitation_id || !names || !participants_count || !email || (confirmed_attendance === undefined && not_attending === undefined)) {
     return res.status(400).json({ error: 'Faltan campos obligatorios para la confirmación de asistencia.' });
@@ -164,9 +155,6 @@ app.post('/rsvp', async (req, res) => {
 });
 
 app.get('/rsvps/:invitationId', async (req, res) => {
-  if (!supabase) { // <-- LÍNEA AGREGADA
-    return res.status(500).json({ error: 'Error del servidor: Conexión a la base de datos no disponible.' });
-  } // <-- LÍNEA AGREGADA
   const { invitationId } = req.params;
   try {
     const { data, error } = await supabase.from('rsvps').select('*').eq('invitation_id', invitationId);
@@ -180,9 +168,6 @@ app.get('/rsvps/:invitationId', async (req, res) => {
 });
 
 app.get('/rsvps/download/:invitationId', async (req, res) => {
-  if (!supabase) { // <-- LÍNEA AGREGADA
-    return res.status(500).json({ error: 'Error del servidor: Conexión a la base de datos no disponible.' });
-  } // <-- LÍNEA AGREGADA
   const { invitationId } = req.params;
   try {
     const { data: rsvps, error } = await supabase.from('rsvps').select('*').eq('invitation_id', invitationId);
@@ -255,9 +240,6 @@ app.get('/protected', authenticateToken, (req, res) => {
 
 // Nuevo endpoint para obtener las invitaciones del usuario autenticado
 app.get('/my-invitations', authenticateToken, async (req, res) => {
-  if (!supabase) { // <-- LÍNEA AGREGADA
-    return res.status(500).json({ error: 'Error del servidor: Conexión a la base de datos no disponible.' });
-  } // <-- LÍNEA AGREGADA
   try {
     const userId = (req as any).user.userId;
     const { data: userData, error: userError } = await supabase.from('users').select('accessible_invitations').eq('id', userId).single();
@@ -280,9 +262,6 @@ app.get('/my-invitations', authenticateToken, async (req, res) => {
 
 // Nuevo endpoint para otorgar acceso a invitaciones
 app.post('/admin/grant-invitation-access', authenticateToken, async (req, res) => {
-  if (!supabase) { // <-- LÍNEA AGREGADA
-    return res.status(500).json({ error: 'Error del servidor: Conexión a la base de datos no disponible.' });
-  } // <-- LÍNEA AGREGADA
   const { targetUserId, invitationId } = req.body;
   if (!targetUserId || !invitationId) {
     return res.status(400).json({ error: 'targetUserId e invitationId son requeridos.' });
@@ -310,12 +289,15 @@ app.post('/admin/grant-invitation-access', authenticateToken, async (req, res) =
       .update({ accessible_invitations: currentAccessibleInvitations })
       .eq('id', targetUserId);
     if (updateError) {
+      console.error('Error al actualizar accessible_invitations:', updateError.message);
       return res.status(500).json({ error: 'Error interno del servidor al otorgar acceso.' });
     }
     res.status(200).json({ message: 'Acceso a la invitación otorgado exitosamente.' });
   } catch (error: any) {
+    console.error('Error en /admin/grant-invitation-access:', error.message);
     res.status(500).json({ error: 'Error interno del servidor.' });
   }
 });
 
+// 3. Exportación final para Vercel
 export default serverless(app);
