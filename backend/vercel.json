@@ -1,13 +1,14 @@
 {
-  "functions": {
-    "api/index.ts": {
-      "runtime": "nodejs22.x"
+  "builds": [
+    {
+      "src": "api/index.ts",
+      "use": "@vercel/node"
     }
-  },
+  ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "/api/index.ts"
+      "dest": "api/index.ts"
     }
   ]
 }
