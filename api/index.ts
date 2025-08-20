@@ -4,9 +4,10 @@ import cors from 'cors';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import ExcelJS from 'exceljs';
-import { supabaseMiddleware } from './supabaseMiddleware'
+import { createClient } from '@supabase/supabase-js';
 import serverless from 'serverless-http';
 
+// Configurar dotenv al inicio
 dotenv.config();
 
 // Interfaces
@@ -20,41 +21,75 @@ interface Rsvp {
   not_attending: boolean;
 }
 
+// Crear cliente de Supabase una sola vez
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Las variables de entorno de Supabase no están configuradas.');
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
+
 const app = express();
 
+// Configurar CORS
 app.use(cors({
-  origin: 'https://invitaciones-digitales-frontend.vercel.app',
+  origin: [
+    'https://invitaciones-digitales-frontend.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:3001'
+  ],
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Aplica el middleware antes de las rutas.
-app.use(supabaseMiddleware);
+// Middleware simplificado para Supabase
+const attachSupabase = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  (req as any).supabase = supabase;
+  next();
+};
 
-const router = express.Router();
+app.use(attachSupabase);
 
+// Ruta de prueba simple
 app.get('/', (_req, res) => {
-  res.json({ message: 'Backend funcionando correctamente' });
+  res.json({ 
+    message: 'Backend funcionando correctamente',
+    timestamp: new Date().toISOString(),
+    status: 'OK'
+  });
+});
+
+// Health check
+app.get('/health', (_req, res) => {
+  res.status(200).json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
 
 // Endpoint para registrar una nueva solicitud de acceso
-router.post('/register', async (req, res) => {
-  const { email, password } = req.body;
-  const supabase = (req as any).supabase;
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email y contraseña son requeridos.' });
-  }
-
+app.post('/api/register', async (req, res) => {
   try {
+    const { email, password } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email y contraseña son requeridos.' });
+    }
+
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
+    
     const { error } = await supabase
       .from('users')
-      .insert([{ email, password_hash: hashedPassword, status: 'pending', access_token: null }])
-      .select()
-      .single();
+      .insert([{ 
+        email, 
+        password_hash: hashedPassword, 
+        status: 'pending', 
+        access_token: null 
+      }]);
 
     if (error) {
       if ((error as any).code === '23505') {
@@ -62,7 +97,10 @@ router.post('/register', async (req, res) => {
       }
       throw error;
     }
-    res.status(201).json({ message: 'Solicitud de registro enviada. Espera la aprobación del administrador.' });
+
+    res.status(201).json({ 
+      message: 'Solicitud de registro enviada. Espera la aprobación del administrador.' 
+    });
   } catch (error: any) {
     console.error('Error en el registro:', error.message);
     res.status(500).json({ error: 'Error interno del servidor.' });
@@ -70,102 +108,187 @@ router.post('/register', async (req, res) => {
 });
 
 // Endpoint para iniciar sesión
-router.post('/login', async (req, res) => {
-  const { email, password, access_token } = req.body;
-  const supabase = (req as any).supabase;
-  if (!email || !password || !access_token) {
-    return res.status(400).json({ error: 'Email, contraseña y token de acceso son requeridos.' });
-  }
-
+app.post('/api/login', async (req, res) => {
   try {
-    const { data: user, error } = await supabase.from('users').select('*').eq('email', email).single();
+    const { email, password, access_token } = req.body;
+    
+    if (!email || !password || !access_token) {
+      return res.status(400).json({ 
+        error: 'Email, contraseña y token de acceso son requeridos.' 
+      });
+    }
+
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .single();
+
     if (error || !user) {
       return res.status(404).json({ error: 'Usuario no encontrado.' });
     }
+
     if (user.status !== 'approved') {
-      return res.status(403).json({ error: 'Tu cuenta no ha sido aprobada o está deshabilitada.' });
+      return res.status(403).json({ 
+        error: 'Tu cuenta no ha sido aprobada o está deshabilitada.' 
+      });
     }
+
     if (user.access_token !== access_token) {
       return res.status(401).json({ error: 'Token de acceso inválido.' });
     }
+
     const isPasswordValid = await bcrypt.compare(password, user.password_hash);
     if (!isPasswordValid) {
       return res.status(401).json({ error: 'Contraseña incorrecta.' });
     }
+
     const sessionToken = jwt.sign(
       { userId: user.id, email: user.email },
       process.env.JWT_SECRET || 'tu_secreto_jwt_super_secreto',
       { expiresIn: '7d' }
     );
-    res.status(200).json({ message: 'Inicio de sesión exitoso', token: sessionToken });
+
+    res.status(200).json({ 
+      message: 'Inicio de sesión exitoso', 
+      token: sessionToken 
+    });
   } catch (error: any) {
     console.error('Error en el inicio de sesión:', error.message);
     res.status(500).json({ error: 'Error interno del servidor.' });
   }
 });
 
-router.get('/invitation/:urlId', async (req, res) => {
-  const { urlId } = req.params;
-  const supabase = (req as any).supabase;
+// Middleware para autenticar el token JWT
+const authenticateToken = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && (authHeader as string).split(' ')[1];
+  
+  if (!token) {
+    return res.sendStatus(401);
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET as string, (err: any, user: any) => {
+    if (err) {
+      return res.sendStatus(403);
+    }
+    (req as any).user = user;
+    next();
+  });
+};
+
+// Obtener invitación por URL ID
+app.get('/api/invitation/:urlId', async (req, res) => {
   try {
-    const { data, error } = await supabase.from('invitations').select('*').eq('url_id', urlId).single();
-    if (error) {
+    const { urlId } = req.params;
+    
+    const { data, error } = await supabase
+      .from('invitations')
+      .select('*')
+      .eq('url_id', urlId)
+      .single();
+
+    if (error || !data) {
       return res.status(404).json({ error: 'Invitación no encontrada.' });
     }
-    if (!data) {
-      return res.status(404).json({ error: 'Invitación no encontrada.' });
-    }
+
     res.status(200).json(data);
   } catch (error: any) {
+    console.error('Error al obtener invitación:', error.message);
     res.status(500).json({ error: 'Error interno del servidor.' });
   }
 });
 
-router.post('/rsvp', async (req, res) => {
-  const { invitation_id, names, participants_count, email, phone, observations, confirmed_attendance, not_attending } = req.body;
-  if (!invitation_id || !names || !participants_count || !email || (confirmed_attendance === undefined && not_attending === undefined)) {
-    return res.status(400).json({ error: 'Faltan campos obligatorios para la confirmación de asistencia.' });
-  }
-
+// Registrar RSVP
+app.post('/api/rsvp', async (req, res) => {
   try {
-    const supabase = (req as any).supabase;
+    const { 
+      invitation_id, 
+      names, 
+      participants_count, 
+      email, 
+      phone, 
+      observations, 
+      confirmed_attendance, 
+      not_attending 
+    } = req.body;
+
+    if (!invitation_id || !names || !participants_count || !email || 
+        (confirmed_attendance === undefined && not_attending === undefined)) {
+      return res.status(400).json({ 
+        error: 'Faltan campos obligatorios para la confirmación de asistencia.' 
+      });
+    }
+
     const { data, error } = await supabase
       .from('rsvps')
-      .insert([{ invitation_id, names, participants_count, email, phone, observations, confirmed_attendance, not_attending }]);
+      .insert([{ 
+        invitation_id, 
+        names, 
+        participants_count, 
+        email, 
+        phone, 
+        observations, 
+        confirmed_attendance, 
+        not_attending 
+      }]);
+
     if (error) {
       return res.status(500).json({ error: error.message });
     }
-    res.status(201).json({ message: 'Confirmación de asistencia registrada con éxito.', data });
+
+    res.status(201).json({ 
+      message: 'Confirmación de asistencia registrada con éxito.', 
+      data 
+    });
   } catch (error: any) {
+    console.error('Error en RSVP:', error.message);
     res.status(500).json({ error: 'Error interno del servidor.' });
   }
 });
 
-router.get('/rsvps/:invitationId', async (req, res) => {
-  const { invitationId } = req.params;
-  const supabase = (req as any).supabase;
+// Obtener RSVPs por invitación
+app.get('/api/rsvps/:invitationId', async (req, res) => {
   try {
-    const { data, error } = await supabase.from('rsvps').select('*').eq('invitation_id', invitationId);
+    const { invitationId } = req.params;
+    
+    const { data, error } = await supabase
+      .from('rsvps')
+      .select('*')
+      .eq('invitation_id', invitationId);
+
     if (error) {
-      return res.status(404).json({ error: 'No se encontraron RSVPs para esta invitación.' });
+      return res.status(404).json({ 
+        error: 'No se encontraron RSVPs para esta invitación.' 
+      });
     }
-    res.status(200).json(data);
+
+    res.status(200).json(data || []);
   } catch (error: any) {
+    console.error('Error al obtener RSVPs:', error.message);
     res.status(500).json({ error: 'Error interno del servidor.' });
   }
 });
 
-router.get('/rsvps/download/:invitationId', async (req, res) => {
-  const { invitationId } = req.params;
-  const supabase = (req as any).supabase;
+// Descargar RSVPs como Excel
+app.get('/api/rsvps/download/:invitationId', async (req, res) => {
   try {
-    const { data: rsvps, error } = await supabase.from('rsvps').select('*').eq('invitation_id', invitationId);
+    const { invitationId } = req.params;
+    
+    const { data: rsvps, error } = await supabase
+      .from('rsvps')
+      .select('*')
+      .eq('invitation_id', invitationId);
+
     if (error) {
-      return res.status(404).json({ error: 'No se encontraron RSVPs para esta invitación.' });
+      return res.status(404).json({ 
+        error: 'No se encontraron RSVPs para esta invitación.' 
+      });
     }
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Invitados');
+    
     worksheet.columns = [
       { header: 'Nombre', key: 'names', width: 30 },
       { header: 'Cantidad de Participantes', key: 'participants_count', width: 25 },
@@ -197,103 +320,152 @@ router.get('/rsvps/download/:invitationId', async (req, res) => {
       worksheet.addRow({ ...rsvp, names: namesToDisplay });
     });
 
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=invitados_${invitationId}.xlsx`);
+    res.setHeader(
+      'Content-Type', 
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader(
+      'Content-Disposition', 
+      `attachment; filename=invitados_${invitationId}.xlsx`
+    );
+    
     await workbook.xlsx.write(res);
     res.end();
   } catch (error: any) {
+    console.error('Error al descargar Excel:', error.message);
     res.status(500).json({ error: 'Error interno del servidor.' });
   }
 });
 
-// Middleware para autenticar el token JWT
-const authenticateToken = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && (authHeader as string).split(' ')[1];
-  if (token == null || typeof token !== 'string') {
-    return res.sendStatus(401);
-  }
-  jwt.verify(token, process.env.JWT_SECRET as string, (err: any, user: any) => {
-    if (err) {
-      return res.sendStatus(403);
-    }
-    (req as any).user = user;
-    next();
-  });
-};
-
 // Ruta protegida de ejemplo
-router.get('/protected', authenticateToken, (req, res) => {
-  res.json({ message: 'Acceso a ruta protegida concedido', user: (req as any).user });
+app.get('/api/protected', authenticateToken, (req, res) => {
+  res.json({ 
+    message: 'Acceso a ruta protegida concedido', 
+    user: (req as any).user 
+  });
 });
 
-// Nuevo endpoint para obtener las invitaciones del usuario autenticado
-router.get('/my-invitations', authenticateToken, async (req, res) => {
+// Obtener invitaciones del usuario autenticado
+app.get('/api/my-invitations', authenticateToken, async (req, res) => {
   try {
     const userId = (req as any).user.userId;
-    const supabase = (req as any).supabase;
-    const { data: userData, error: userError } = await supabase.from('users').select('accessible_invitations').eq('id', userId).single();
+    
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('accessible_invitations')
+      .eq('id', userId)
+      .single();
+
     if (userError || !userData) {
       return res.status(404).json({ error: 'Datos de usuario no encontrados.' });
     }
-    const accessibleInvitationIds = Array.isArray(userData.accessible_invitations) ? userData.accessible_invitations : [];
+
+    const accessibleInvitationIds = Array.isArray(userData.accessible_invitations) 
+      ? userData.accessible_invitations 
+      : [];
+
     if (accessibleInvitationIds.length === 0) {
       return res.status(200).json([]);
     }
-    const { data: invitations, error: invitationsError } = await supabase.from('invitations').select('*').in('id', accessibleInvitationIds);
+
+    const { data: invitations, error: invitationsError } = await supabase
+      .from('invitations')
+      .select('*')
+      .in('id', accessibleInvitationIds);
+
     if (invitationsError) {
-      return res.status(500).json({ error: 'Error interno del servidor al obtener invitaciones.' });
+      return res.status(500).json({ 
+        error: 'Error interno del servidor al obtener invitaciones.' 
+      });
     }
-    res.status(200).json(invitations);
+
+    res.status(200).json(invitations || []);
   } catch (error: any) {
+    console.error('Error al obtener mis invitaciones:', error.message);
     res.status(500).json({ error: 'Error interno del servidor.' });
   }
 });
 
-// Nuevo endpoint para otorgar acceso a invitaciones
-router.post('/admin/grant-invitation-access', authenticateToken, async (req, res) => {
-  const { targetUserId, invitationId } = req.body;
-  if (!targetUserId || !invitationId) {
-    return res.status(400).json({ error: 'targetUserId e invitationId son requeridos.' });
-  }
-
+// Otorgar acceso a invitaciones
+app.post('/api/admin/grant-invitation-access', authenticateToken, async (req, res) => {
   try {
+    const { targetUserId, invitationId } = req.body;
+    
+    if (!targetUserId || !invitationId) {
+      return res.status(400).json({ 
+        error: 'targetUserId e invitationId son requeridos.' 
+      });
+    }
+
     const requestingUser = (req as any).user.userId;
-    const supabase = (req as any).supabase;
-    const { data: invitation, error: invitationError } = await supabase.from('invitations').select('user_id').eq('id', invitationId).single();
+    
+    const { data: invitation, error: invitationError } = await supabase
+      .from('invitations')
+      .select('user_id')
+      .eq('id', invitationId)
+      .single();
+
     if (invitationError || !invitation) {
       return res.status(404).json({ error: 'Invitación no encontrada.' });
     }
+
     if (invitation.user_id !== requestingUser) {
-      return res.status(403).json({ error: 'No tienes permiso para modificar esta invitación.' });
+      return res.status(403).json({ 
+        error: 'No tienes permiso para modificar esta invitación.' 
+      });
     }
-    const { data: targetUser, error: targetUserError } = await supabase.from('users').select('accessible_invitations').eq('id', targetUserId).single();
+
+    const { data: targetUser, error: targetUserError } = await supabase
+      .from('users')
+      .select('accessible_invitations')
+      .eq('id', targetUserId)
+      .single();
+
     if (targetUserError || !targetUser) {
       return res.status(404).json({ error: 'Usuario objetivo no encontrado.' });
     }
-    const currentAccessibleInvitations = Array.isArray(targetUser.accessible_invitations) ? targetUser.accessible_invitations : [];
+
+    const currentAccessibleInvitations = Array.isArray(targetUser.accessible_invitations) 
+      ? targetUser.accessible_invitations 
+      : [];
+
     if (!currentAccessibleInvitations.includes(invitationId)) {
       currentAccessibleInvitations.push(invitationId);
     }
+
     const { error: updateError } = await supabase
       .from('users')
       .update({ accessible_invitations: currentAccessibleInvitations })
       .eq('id', targetUserId);
+
     if (updateError) {
       console.error('Error al actualizar accessible_invitations:', updateError.message);
-      return res.status(500).json({ error: 'Error interno del servidor al otorgar acceso.' });
+      return res.status(500).json({ 
+        error: 'Error interno del servidor al otorgar acceso.' 
+      });
     }
-    res.status(200).json({ message: 'Acceso a la invitación otorgado exitosamente.' });
+
+    res.status(200).json({ 
+      message: 'Acceso a la invitación otorgado exitosamente.' 
+    });
   } catch (error: any) {
     console.error('Error en /admin/grant-invitation-access:', error.message);
     res.status(500).json({ error: 'Error interno del servidor.' });
   }
 });
 
-// Montar el enrutador en el path '/api'
-app.use('/api', router);
+// Manejo de errores global
+app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('Error no manejado:', err);
+  res.status(500).json({ error: 'Error interno del servidor.' });
+});
 
-// Exportación final para Vercel
+// Manejo de rutas no encontradas
+app.use('*', (req, res) => {
+  res.status(404).json({ error: 'Ruta no encontrada.' });
+});
+
+// Exportación para Vercel
 export default serverless(app);
 
 // // Prueba para entorno local
