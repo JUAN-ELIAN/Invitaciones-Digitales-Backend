@@ -720,6 +720,35 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         }));
     }
 
+    // Ruta protegida para obtener las invitaciones de un usuario
+    if (req.method === 'GET' && pathname === '/api/my-invitations') {
+        const authHeader = req.headers.authorization;
+        const token = authHeader?.split(' ')[1];
+
+        if (!token) {
+            return res.writeHead(401, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Token de autenticación no proporcionado' }));
+        }
+
+        const { data: userData, error: userError } = await supabase.auth.getUser(token);
+
+        if (userError || !userData?.user) {
+            return res.writeHead(401, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Token inválido o expirado' }));
+        }
+
+        const loggedInUserId = userData.user.id;
+
+        const { data, error } = await supabase
+            .from('invitations')
+            .select('*')
+            .eq('user_id', loggedInUserId);
+
+        if (error) {
+            return res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Error al obtener las invitaciones del usuario', message: error.message }));
+        }
+
+        return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(data));
+    }
+
     // Ruta de prueba de Supabase (GET)
     if (pathname === '/api/test-supabase') {
       const { data, error } = await supabase
