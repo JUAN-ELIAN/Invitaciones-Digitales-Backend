@@ -691,15 +691,15 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
             return res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Falta el ID de la invitación' }));
         }
 
-        // === PASO CLAVE: OBTENER accessible_invitations DEL USUARIO LOGEADO ===
-        const { data: profileData, error: profileError } = await supabase
-            .from('users')
-            .select('accessible_invitations')
-            .eq('id', loggedInUserId)
+        // === PASO CLAVE: VERIFICAR QUE EL USUARIO PERTENECE A LA INVITACIÓN ===
+        const { data: invitationData, error: invitationError } = await supabase
+            .from('invitations')
+            .select('user_id')
+            .eq('id', invitationId)
             .single();
-
-        if (profileError || !profileData || !Array.isArray(profileData.accessible_invitations) || !profileData.accessible_invitations.includes(invitationId)) {
-             return res.writeHead(403, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Acceso denegado. La invitación no pertenece a este usuario o no existe.' }));
+        
+        if (invitationError || !invitationData || invitationData.user_id !== loggedInUserId) {
+             return res.writeHead(403, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Acceso denegado. La invitación no pertenece a este usuario.' }));
         }
         
         const { data, error } = await supabase
