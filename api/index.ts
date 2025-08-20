@@ -490,6 +490,7 @@
 // // Exportación final para Vercel
 // export default serverless(app);
 
+import cors from 'cors';
 import { IncomingMessage, ServerResponse } from 'http';
 import { createClient } from '@supabase/supabase-js';
 import { parse } from 'url';
@@ -783,22 +784,63 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       }));
     }
 
-    // Ruta para obtener una invitación por ID (GET)
-    if (pathname && pathname.startsWith('/api/invitation/')) {
-      const urlId = pathname.split('/')[3];
-      
-      const { data, error } = await supabase
-        .from('invitations')
-        .select('*')
-        .eq('url_id', urlId)
-        .single();
+    // Ruta protegida para obtener las invitaciones de un usuario (GET)    
+if (req.method === 'GET' && pathname === '/api/my-invitations') {
+    try {
+        const authHeader = req.headers.authorization;
+        const token = authHeader?.split(' ')[1];
+
+        if (!token) {
+            return res.writeHead(401, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Token de autenticación no proporcionado' }));
+        }
+
+        const { data: userData, error: userError } = await supabase.auth.getUser(token);
+        if (userError || !userData?.user) {
+            return res.writeHead(401, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Token inválido o expirado' }));
+        }
+
+        const loggedInUserId = userData.user.id;
         
-      if (error || !data) {
-        return res.writeHead(404, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Invitación no encontrada' }));
-      }
-      
-      return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(data));
+        // Obtener los IDs de las invitaciones accesibles para este usuario
+        const { data: profileData, error: profileError } = await supabase
+            .from('users')
+            .select('accessible_invitations')
+            .eq('id', loggedInUserId)
+            .single();
+
+        if (profileError || !profileData || !Array.isArray(profileData.accessible_invitations)) {
+            // Este es un caso de error, responde con un 404
+            return res.writeHead(404, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'No se encontraron invitaciones para este usuario.' }));
+        }
+        
+        const accessibleInvitationIds = profileData.accessible_invitations;
+
+        if (accessibleInvitationIds.length === 0) {
+            return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify([]));
+        }
+
+        // Obtener los datos de las invitaciones a partir de los IDs
+        const { data: invitations, error: invitationsError } = await supabase
+            .from('invitations')
+            .select('*')
+            .in('id', accessibleInvitationIds);
+
+        if (invitationsError) {
+            console.error('Error de Supabase en /api/my-invitations:', invitationsError.message);
+            return res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Error al obtener las invitaciones.', message: invitationsError.message }));
+        }
+
+        return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(invitations));
+
+    } catch (error: any) {
+        // En caso de cualquier error inesperado, responde con un 500
+        console.error('Error inesperado en /api/my-invitations:', error.message);
+        return res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({
+            error: 'Error interno del servidor',
+            message: error.message
+        }));
     }
+}
 
     // Si la URL no coincide con ninguna de las rutas
     return res.writeHead(404, { 'Content-Type': 'application/json' }).end(JSON.stringify({
