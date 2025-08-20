@@ -13,9 +13,15 @@
       "dest": "/api"
     }
   ],
+  "env": {
+    "SUPABASE_URL": "@supabase-url",
+    "SUPABASE_SERVICE_ROLE_KEY": "@supabase-service-role-key"
+},
   "functions": {
-    "api/**/*.ts": {
-      "maxDuration": 30
+    "api/index.ts": {
+      "memory": 512,
+      "maxDuration": 10
     }
-  }
+  },
+  "regions": ["all"]
 }
