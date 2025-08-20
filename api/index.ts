@@ -506,6 +506,27 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// Función para verificar el JWT
+const verifyToken = (req: IncomingMessage): { userId: string; email: string; } | null => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return null;
+  }
+
+  const token = authHeader.split(' ')[1];
+  if (!token) {
+    return null;
+  }
+
+  try {
+    const jwtSecret = process.env.JWT_SECRET as string;
+    const decoded = jwt.verify(token, jwtSecret) as { userId: string; email: string; };
+    return decoded;
+  } catch (err) {
+    return null;
+  }
+};
+
 // Función principal para manejar las solicitudes
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   // Configuración de CORS para solicitudes
@@ -533,7 +554,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         version: '1.0'
       }));
     }
-
+    
     // Ruta de registro de usuario (POST)
     if (req.method === 'POST' && pathname === '/api/register') {
       let body = '';
@@ -597,6 +618,18 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       const token = jwt.sign({ userId: userData.id, email: userData.email }, jwtSecret, { expiresIn: '1h' });
 
       return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ message: 'Login exitoso', token }));
+    }
+
+    // Ruta de perfil protegida (GET)
+    if (req.method === 'GET' && pathname === '/api/profile') {
+      const user = verifyToken(req);
+      if (!user) {
+        return res.writeHead(401, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'No autorizado' }));
+      }
+      return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({
+        message: 'Acceso concedido a la ruta de perfil',
+        user: { userId: user.userId, email: user.email }
+      }));
     }
 
     // Ruta de prueba de Supabase (GET)
