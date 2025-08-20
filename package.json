@@ -4,7 +4,7 @@
   "description": "Backend for digital invitations system",
   "main": "api/index.ts",
   "engines": {
-    "node": "22.x"
+    "node": "18.x"
   },
   "scripts": {
     "dev": "vercel dev",
