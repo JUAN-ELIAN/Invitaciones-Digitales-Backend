@@ -4,12 +4,12 @@
   "description": "Backend for digital invitations system",
   "main": "api/index.ts",
   "engines": {
-    "node": "18.x"
+    "node": "22.x"
   },
   "scripts": {
     "dev": "vercel dev",
-    "build": "tsc",
-    "start": "node dist/api/index.js",
+    "build": "echo 'No build step required for serverless functions'",
+    "start": "node api/index.js",
     "vercel-build": "echo 'Build completed'"
   },
   "dependencies": {

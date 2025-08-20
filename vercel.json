@@ -1,18 +1,20 @@
 {
   "version": 2,
-  "functions": {
-    "api/index.ts": {
-      "runtime": "@vercel/node@3.0.7"
-    }
-  },
-  "routes": [
+  "builds": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/index.ts"
-    },
+      "src": "api/index.ts",
+      "use": "@vercel/node@3.0.7"
+    }
+  ],
+  "routes": [
     {
       "src": "/(.*)",
       "dest": "/api/index.ts"
     }
-  ]
+  ],
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 30
+    }
+  }
 }
