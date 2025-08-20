@@ -5,7 +5,9 @@
   "main": "api/index.ts",
   "scripts": {
     "dev": "vercel dev",
+    "start": "node api/index.ts",
     "deploy": "vercel"
+    
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.38.0",

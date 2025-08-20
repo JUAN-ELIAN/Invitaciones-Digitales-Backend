@@ -497,15 +497,37 @@ import { parse } from 'url';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
+// Interfaces
+interface JwtPayload {
+  userId: string;
+  email: string;
+  iat?: number;
+  exp?: number;
+}
+
 // Inicializar Supabase client
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
+const jwtSecret = process.env.JWT_SECRET || 'tu_secreto_jwt_super_secreto';
 
 if (!supabaseUrl || !supabaseKey) {
   throw new Error('Las variables de entorno de Supabase no están configuradas.');
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
+
+// Función helper para verificar JWT
+function verifyJWT(token: string): Promise<JwtPayload> {
+  return new Promise((resolve, reject) => {
+    jwt.verify(token, jwtSecret, (err, decoded) => {
+      if (err) {
+        reject(new Error('Token inválido o expirado'));
+      } else {
+        resolve(decoded as JwtPayload);
+      }
+    });
+  });
+}
 
 // Función principal para manejar las solicitudes
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
@@ -522,6 +544,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   // --- ¡depuración! ---
   console.log('DEBUG: Petición recibida en el backend');
   console.log('DEBUG: URL de la petición:', req.url);
+  console.log('DEBUG: Método:', req.method);
   console.log('DEBUG: Cabecera Authorization recibida:', req.headers.authorization);
 
   // Parsear la URL para enrutamiento
@@ -549,7 +572,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
       const { email, password } = JSON.parse(body);
       if (!email || !password) {
-        return res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Faltan campos obligatorios' }));
+        return res.writeHead(400, { 'Content-Type': 'application/json' })
+          .end(JSON.stringify({ error: 'Faltan campos obligatorios' }));
       }
 
       const saltRounds = 10;
@@ -557,13 +581,26 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
       const { data, error } = await supabase
         .from('users')
-        .insert([{ email, password_hash: hashedPassword }]);
+        .insert([{ 
+          email, 
+          password_hash: hashedPassword,
+          status: 'approved', // Asumiendo que los usuarios se aprueban automáticamente
+          accessible_invitations: [] // Inicializar array vacío
+        }])
+        .select(); // Agregar select() para obtener los datos insertados
 
       if (error) {
-        return res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Error al registrar el usuario', message: error.message }));
+        console.error('Error al registrar usuario:', error);
+        if (error.code === '23505') {
+          return res.writeHead(409, { 'Content-Type': 'application/json' })
+            .end(JSON.stringify({ error: 'El email ya está registrado' }));
+        }
+        return res.writeHead(500, { 'Content-Type': 'application/json' })
+          .end(JSON.stringify({ error: 'Error al registrar el usuario', message: error.message }));
       }
 
-      return res.writeHead(201, { 'Content-Type': 'application/json' }).end(JSON.stringify({ message: 'Usuario registrado exitosamente', data }));
+      return res.writeHead(201, { 'Content-Type': 'application/json' })
+        .end(JSON.stringify({ message: 'Usuario registrado exitosamente', data }));
     }
 
     // Ruta de login (POST)
@@ -575,7 +612,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
       const { email, password } = JSON.parse(body);
       if (!email || !password) {
-        return res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Faltan campos obligatorios' }));
+        return res.writeHead(400, { 'Content-Type': 'application/json' })
+          .end(JSON.stringify({ error: 'Faltan campos obligatorios' }));
       }
 
       const { data: userData, error: userError } = await supabase
@@ -585,52 +623,98 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         .single();
 
       if (userError || !userData) {
-        return res.writeHead(401, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Credenciales inválidas' }));
+        console.error('Usuario no encontrado:', userError);
+        return res.writeHead(401, { 'Content-Type': 'application/json' })
+          .end(JSON.stringify({ error: 'Credenciales inválidas' }));
       }
 
       const passwordMatch = await bcrypt.compare(password, userData.password_hash);
 
       if (!passwordMatch) {
-        return res.writeHead(401, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Credenciales inválidas' }));
+        return res.writeHead(401, { 'Content-Type': 'application/json' })
+          .end(JSON.stringify({ error: 'Credenciales inválidas' }));
       }
 
       // Generar JWT
-      const jwtSecret = process.env.JWT_SECRET;
-      if (!jwtSecret) {
-        return res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'JWT_SECRET no configurado' }));
-      }
+      const token = jwt.sign(
+        { userId: userData.id, email: userData.email }, 
+        jwtSecret, 
+        { expiresIn: '7d' }
+      );
 
-      const token = jwt.sign({ userId: userData.id, email: userData.email }, jwtSecret, { expiresIn: '1h' });
+      console.log('DEBUG: Login exitoso para usuario:', userData.id);
 
-      return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ message: 'Login exitoso', token }));
+      return res.writeHead(200, { 'Content-Type': 'application/json' })
+        .end(JSON.stringify({ message: 'Login exitoso', token }));
     }
 
-    // Ruta para crear una invitación (POST) - Ahora es pública
+    // Ruta para crear una invitación (POST) - Protegida con JWT
     if (req.method === 'POST' && pathname === '/api/invitations') {
-      let body = '';
-      for await (const chunk of req) {
-        body += chunk;
+      const authHeader = req.headers.authorization;
+      const token = authHeader?.split(' ')[1];
+
+      if (!token) {
+        return res.writeHead(401, { 'Content-Type': 'application/json' })
+          .end(JSON.stringify({ error: 'Token de autenticación no proporcionado' }));
       }
 
-      const { wedding_date, wedding_location, url_id, is_active } = JSON.parse(body);
-      if (!wedding_date || !wedding_location || !url_id) {
-        return res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Faltan campos obligatorios' }));
+      try {
+        const decoded = await verifyJWT(token);
+        
+        let body = '';
+        for await (const chunk of req) {
+          body += chunk;
+        }
+
+        const { wedding_date, wedding_location, url_id, is_active } = JSON.parse(body);
+        if (!wedding_date || !wedding_location || !url_id) {
+          return res.writeHead(400, { 'Content-Type': 'application/json' })
+            .end(JSON.stringify({ error: 'Faltan campos obligatorios' }));
+        }
+
+        const { data, error } = await supabase
+          .from('invitations')
+          .insert([{
+            wedding_date,
+            wedding_location,
+            url_id,
+            is_active: is_active ?? true,
+            user_id: decoded.userId // Asociar la invitación al usuario
+          }])
+          .select(); // Agregar select() para obtener los datos insertados
+
+        if (error) {
+          return res.writeHead(500, { 'Content-Type': 'application/json' })
+            .end(JSON.stringify({ error: 'Error al crear la invitación', message: error.message }));
+        }
+
+        // Actualizar accessible_invitations del usuario
+        if (data && data.length > 0) {
+          const insertedInvitation = data[0];
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('accessible_invitations')
+            .eq('id', decoded.userId)
+            .single();
+
+          if (!userError && userData) {
+            const currentInvitations = userData.accessible_invitations || [];
+            currentInvitations.push(insertedInvitation.id);
+            
+            await supabase
+              .from('users')
+              .update({ accessible_invitations: currentInvitations })
+              .eq('id', decoded.userId);
+          }
+        }
+
+        return res.writeHead(201, { 'Content-Type': 'application/json' })
+          .end(JSON.stringify({ message: 'Invitación creada exitosamente', data }));
+      } catch (error) {
+        console.error('Error de autenticación:', error);
+        return res.writeHead(401, { 'Content-Type': 'application/json' })
+          .end(JSON.stringify({ error: 'Token inválido o expirado' }));
       }
-
-      const { data, error } = await supabase
-        .from('invitations')
-        .insert([{
-          wedding_date,
-          wedding_location,
-          url_id,
-          is_active: is_active ?? true
-        }]);
-
-      if (error) {
-        return res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Error al crear la invitación', message: error.message }));
-      }
-
-      return res.writeHead(201, { 'Content-Type': 'application/json' }).end(JSON.stringify({ message: 'Invitación creada exitosamente', data }));
     }
 
     // Ruta para registrar una asistencia (RSVP)
@@ -652,7 +736,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       } = JSON.parse(body);
     
       if (!invitation_id || !names || typeof confirmed_attendance === 'undefined') {
-        return res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Faltan campos obligatorios' }));
+        return res.writeHead(400, { 'Content-Type': 'application/json' })
+          .end(JSON.stringify({ error: 'Faltan campos obligatorios' }));
       }
     
       const { data, error } = await supabase
@@ -666,111 +751,145 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
           observations,
           confirmed_attendance,
           not_attending
-        }]);
+        }])
+        .select(); // Agregar select() para obtener los datos insertados
     
       if (error) {
-        return res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Error al registrar la asistencia', message: error.message }));
+        return res.writeHead(500, { 'Content-Type': 'application/json' })
+          .end(JSON.stringify({ error: 'Error al registrar la asistencia', message: error.message }));
       }
     
-      return res.writeHead(201, { 'Content-Type': 'application/json' }).end(JSON.stringify({ message: 'Asistencia registrada exitosamente', data }));
+      return res.writeHead(201, { 'Content-Type': 'application/json' })
+        .end(JSON.stringify({ message: 'Asistencia registrada exitosamente', data }));
     }
     
-    // Ruta protegida para obtener asistencias (RSVP)
+    // Ruta protegida para obtener asistencias (RSVP) - Usando JWT
     if (req.method === 'GET' && pathname && pathname.startsWith('/api/rsvps/')) {
-        const authHeader = req.headers.authorization;
-        const token = authHeader?.split(' ')[1];
+      const authHeader = req.headers.authorization;
+      const token = authHeader?.split(' ')[1];
 
-        if (!token) {
-            return res.writeHead(401, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Token de autenticación no proporcionado' }));
-        }
+      if (!token) {
+        return res.writeHead(401, { 'Content-Type': 'application/json' })
+          .end(JSON.stringify({ error: 'Token de autenticación no proporcionado' }));
+      }
 
-        const { data: userData, error: userError } = await supabase.auth.getUser(token);
-
-        if (userError || !userData?.user) {
-            return res.writeHead(401, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Token inválido o expirado' }));
-        }
-        
-        const loggedInUserId = userData.user.id;
+      try {
+        const decoded = await verifyJWT(token);
         const invitationId = pathname.split('/')[3];
 
         if (!invitationId) {
-            return res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Falta el ID de la invitación' }));
+          return res.writeHead(400, { 'Content-Type': 'application/json' })
+            .end(JSON.stringify({ error: 'Falta el ID de la invitación' }));
         }
 
-        // === PASO CLAVE: VERIFICAR QUE EL USUARIO PERTENECE A LA INVITACIÓN ===
-        const { data: invitationData, error: invitationError } = await supabase
-            .from('invitations')
-            .select('user_id')
-            .eq('id', invitationId)
-            .single();
+        console.log('DEBUG: Verificando acceso a invitación:', invitationId, 'para usuario:', decoded.userId);
+
+        // Verificar que el usuario tiene acceso a esta invitación
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('accessible_invitations')
+          .eq('id', decoded.userId)
+          .single();
         
-        if (invitationError || !invitationData || invitationData.user_id !== loggedInUserId) {
-             return res.writeHead(403, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Acceso denegado. La invitación no pertenece a este usuario.' }));
+        if (userError || !userData) {
+          return res.writeHead(403, { 'Content-Type': 'application/json' })
+            .end(JSON.stringify({ error: 'Usuario no encontrado' }));
+        }
+
+        const accessibleInvitations = userData.accessible_invitations || [];
+        if (!accessibleInvitations.includes(invitationId)) {
+          return res.writeHead(403, { 'Content-Type': 'application/json' })
+            .end(JSON.stringify({ error: 'Acceso denegado. No tienes permiso para ver esta invitación.' }));
         }
         
         const { data, error } = await supabase
-            .from('rsvps')
-            .select('*')
-            .eq('invitation_id', invitationId);
+          .from('rsvps')
+          .select('*')
+          .eq('invitation_id', invitationId);
 
         if (error) {
-            return res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Error al obtener las asistencias', message: error.message }));
+          return res.writeHead(500, { 'Content-Type': 'application/json' })
+            .end(JSON.stringify({ error: 'Error al obtener las asistencias', message: error.message }));
         }
 
         const participantsCount = data.reduce((sum, rsvp) => sum + (rsvp.participants_count || 0), 0);
 
-        return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({
+        return res.writeHead(200, { 'Content-Type': 'application/json' })
+          .end(JSON.stringify({
             message: 'Asistencias obtenidas exitosamente',
             rsvps: data,
             participants_count: participantsCount
-        }));
+          }));
+      } catch (error) {
+        console.error('Error de autenticación:', error);
+        return res.writeHead(401, { 'Content-Type': 'application/json' })
+          .end(JSON.stringify({ error: 'Token inválido o expirado' }));
+      }
     }
 
-    // Ruta protegida para obtener las invitaciones de un usuario
+    // Ruta protegida para obtener las invitaciones de un usuario - Usando JWT
     if (req.method === 'GET' && pathname === '/api/my-invitations') {
-        const authHeader = req.headers.authorization;
-        const token = authHeader?.split(' ')[1];
+      const authHeader = req.headers.authorization;
+      const token = authHeader?.split(' ')[1];
 
-        if (!token) {
-            return res.writeHead(401, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Token de autenticación no proporcionado' }));
-        }
+      console.log('DEBUG: /api/my-invitations - Token recibido:', token ? 'Sí' : 'No');
 
-        const { data: userData, error: userError } = await supabase.auth.getUser(token);
+      if (!token) {
+        return res.writeHead(401, { 'Content-Type': 'application/json' })
+          .end(JSON.stringify({ error: 'Token de autenticación no proporcionado' }));
+      }
 
-        if (userError || !userData?.user) {
-            return res.writeHead(401, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Token inválido o expirado' }));
-        }
+      try {
+        const decoded = await verifyJWT(token);
+        console.log('DEBUG: Token decodificado exitosamente. Usuario:', decoded.userId);
 
-        const loggedInUserId = userData.user.id;
-
-        // Paso clave: Obtener los IDs de las invitaciones accesibles para este usuario
+        // Obtener los IDs de las invitaciones accesibles para este usuario
         const { data: profileData, error: profileError } = await supabase
-            .from('users')
-            .select('accessible_invitations')
-            .eq('id', loggedInUserId)
-            .single();
+          .from('users')
+          .select('accessible_invitations')
+          .eq('id', decoded.userId)
+          .single();
 
-        if (profileError || !profileData || !Array.isArray(profileData.accessible_invitations)) {
-             return res.writeHead(404, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'No se encontraron invitaciones para este usuario.' }));
+        if (profileError) {
+          console.error('Error al obtener perfil:', profileError);
+          return res.writeHead(500, { 'Content-Type': 'application/json' })
+            .end(JSON.stringify({ error: 'Error al obtener datos del usuario', message: profileError.message }));
+        }
+
+        if (!profileData) {
+          return res.writeHead(404, { 'Content-Type': 'application/json' })
+            .end(JSON.stringify({ error: 'Usuario no encontrado' }));
         }
         
-        const accessibleInvitationIds = profileData.accessible_invitations;
+        const accessibleInvitationIds = profileData.accessible_invitations || [];
+        console.log('DEBUG: IDs de invitaciones accesibles:', accessibleInvitationIds);
 
         if (accessibleInvitationIds.length === 0) {
-          return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify([]));
+          return res.writeHead(200, { 'Content-Type': 'application/json' })
+            .end(JSON.stringify([]));
         }
 
         // Obtener los datos de las invitaciones a partir de los IDs
         const { data: invitations, error: invitationsError } = await supabase
-            .from('invitations')
-            .select('*')
-            .in('id', accessibleInvitationIds);
+          .from('invitations')
+          .select('*')
+          .in('id', accessibleInvitationIds);
 
         if (invitationsError) {
-            return res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Error al obtener las invitaciones.', message: invitationsError.message }));
+          console.error('Error al obtener invitaciones:', invitationsError);
+          return res.writeHead(500, { 'Content-Type': 'application/json' })
+            .end(JSON.stringify({ error: 'Error al obtener las invitaciones.', message: invitationsError.message }));
         }
 
-        return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(invitations));
+        console.log('DEBUG: Invitaciones encontradas:', invitations?.length || 0);
+
+        return res.writeHead(200, { 'Content-Type': 'application/json' })
+          .end(JSON.stringify(invitations || []));
+      } catch (error: any) {
+        console.error('Error de autenticación:', error.message);
+        return res.writeHead(401, { 'Content-Type': 'application/json' })
+          .end(JSON.stringify({ error: 'Token inválido o expirado' }));
+      }
     }
 
     // Ruta de prueba de Supabase (GET)
@@ -780,16 +899,17 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         .select('count')
         .limit(1);
 
-      return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({
-        message: 'Test de Supabase completado',
-        success: !error,
-        error: error?.message || null,
-        hasData: !!data,
-        timestamp: new Date().toISOString()
-      }));
+      return res.writeHead(200, { 'Content-Type': 'application/json' })
+        .end(JSON.stringify({
+          message: 'Test de Supabase completado',
+          success: !error,
+          error: error?.message || null,
+          hasData: !!data,
+          timestamp: new Date().toISOString()
+        }));
     }
 
-    // Ruta para obtener una invitación por ID (GET)
+    // Ruta para obtener una invitación por URL ID (GET) - Pública
     if (pathname && pathname.startsWith('/api/invitation/')) {
       const urlId = pathname.split('/')[3];
       
@@ -800,23 +920,27 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         .single();
         
       if (error || !data) {
-        return res.writeHead(404, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Invitación no encontrada' }));
+        return res.writeHead(404, { 'Content-Type': 'application/json' })
+          .end(JSON.stringify({ error: 'Invitación no encontrada' }));
       }
       
-      return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(data));
+      return res.writeHead(200, { 'Content-Type': 'application/json' })
+        .end(JSON.stringify(data));
     }
 
     // Si la URL no coincide con ninguna de las rutas
-    return res.writeHead(404, { 'Content-Type': 'application/json' }).end(JSON.stringify({
-      message: 'Ruta no encontrada',
-      status: 404
-    }));
+    return res.writeHead(404, { 'Content-Type': 'application/json' })
+      .end(JSON.stringify({
+        message: 'Ruta no encontrada',
+        status: 404
+      }));
     
   } catch (error: any) {
     console.error('Error en el handler:', error.message);
-    return res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ 
-      error: 'Error interno del servidor', 
-      message: error.message 
-    }));
+    return res.writeHead(500, { 'Content-Type': 'application/json' })
+      .end(JSON.stringify({ 
+        error: 'Error interno del servidor', 
+        message: error.message 
+      }));
   }
 }
