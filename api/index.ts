@@ -494,35 +494,37 @@
 import { IncomingMessage, ServerResponse } from 'http';
 import { createClient } from '@supabase/supabase-js';
 import { parse } from 'url';
+import bcrypt from 'bcrypt';
 
 // Inicializar Supabase client
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
 
-// Asegúrate de que las variables de entorno están configuradas
 if (!supabaseUrl || !supabaseKey) {
   throw new Error('Las variables de entorno de Supabase no están configuradas.');
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Función para manejar las solicitudes
+// Función principal para manejar las solicitudes
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
-  // Configuración de CORS
-  res.setHeader('Access-Control-Allow-Origin', 'https://invitaciones-digitales-frontend.vercel.app');
+  // Configuración de CORS para solicitudes
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-  // Manejar solicitudes OPTIONS (preflight)
+  // Manejar solicitudes preflight de CORS
   if (req.method === 'OPTIONS') {
     return res.writeHead(204).end();
   }
 
-  // Parsear la URL para obtener el path y los parámetros
+  // Parsear la URL para enrutamiento
   const { pathname } = parse(req.url || '/', true);
 
   try {
-    // Manejar diferentes rutas
+    // === ENRUTAMIENTO DE LA API ===
+
+    // Ruta principal
     if (pathname === '/') {
       return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({
         message: 'Backend funcionando correctamente',
@@ -532,15 +534,34 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       }));
     }
 
-    if (pathname === '/api/test-supabase') {
-      if (!supabase) {
-        return res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ 
-          error: 'Supabase no configurado',
-          hasUrl: !!process.env.SUPABASE_URL,
-          hasKey: !!process.env.SUPABASE_ANON_KEY
-        }));
+    // Ruta de registro de usuario (POST)
+    if (req.method === 'POST' && pathname === '/api/register') {
+      let body = '';
+      for await (const chunk of req) {
+        body += chunk;
       }
 
+      const { email, password, name } = JSON.parse(body);
+      if (!email || !password || !name) {
+        return res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Faltan campos obligatorios' }));
+      }
+
+      const saltRounds = 10;
+      const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+      const { data, error } = await supabase
+        .from('users')
+        .insert([{ email, password: hashedPassword, name }]);
+
+      if (error) {
+        return res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Error al registrar el usuario', message: error.message }));
+      }
+
+      return res.writeHead(201, { 'Content-Type': 'application/json' }).end(JSON.stringify({ message: 'Usuario registrado exitosamente', data }));
+    }
+
+    // Ruta de prueba de Supabase (GET)
+    if (pathname === '/api/test-supabase') {
       const { data, error } = await supabase
         .from('users')
         .select('count')
@@ -555,14 +576,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       }));
     }
 
-    // Ruta con parámetro dinámico: /api/invitation/:urlId
+    // Ruta para obtener una invitación por ID (GET)
     if (pathname && pathname.startsWith('/api/invitation/')) {
       const urlId = pathname.split('/')[3];
       
-      if (!supabase) {
-        return res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Supabase no configurado' }));
-      }
-
       const { data, error } = await supabase
         .from('invitations')
         .select('*')
