@@ -21,11 +21,12 @@ interface Rsvp {
 }
 
 const app = express();
-const router = express.Router();
 
-router.get('/', (_req, res) => {
-  res.json({ message: 'Bienvenido a la API' });
+app.get('/', (_req, res) => {
+  res.json({ message: 'Backend funcionando correctamente' });
 });
+
+const router = express.Router();
 
 app.use(cors({
   origin: 'https://invitaciones-digitales-frontend.vercel.app',
@@ -37,11 +38,6 @@ app.use(express.json());
 
 // Aplica el middleware antes de las rutas.
 app.use(supabaseMiddleware);
-
-// Endpoint de prueba
-router.get('/test', (_req, res) => { 
-  res.json({ message: 'Backend funcionando correctamente' });
-});
 
 // Endpoint para registrar una nueva solicitud de acceso
 router.post('/register', async (req, res) => {
@@ -298,5 +294,44 @@ router.post('/admin/grant-invitation-access', authenticateToken, async (req, res
 app.use('/api', router);
 
 // Exportación final para Vercel
-// Esta línea es crucial para que Vercel encuentre y ejecute la aplicación.
 export default serverless(app);
+
+// // Prueba para entorno local
+// import express from 'express';
+// import dotenv from 'dotenv';
+// import cors from 'cors';
+// import serverless from 'serverless-http';
+
+// dotenv.config();
+
+// const app = express();
+
+
+// app.get('/', (_req, res) => {
+//   res.json({ message: 'Bienvenido a la API de invitaciones digitales.' });
+// });
+
+// const router = express.Router();
+
+// app.use(cors({
+//   origin: 'https://invitaciones-digitales-frontend.vercel.app',
+//   methods: ['GET', 'POST', 'PUT', 'DELETE'],
+//   allowedHeaders: ['Content-Type', 'Authorization'],
+// }));
+
+// app.use(express.json());
+
+// // Montar el enrutador en el path '/api'
+// app.use('/api', router);
+
+// // Si estás probando localmente
+// if (process.env.NODE_ENV !== 'production') {
+//   const PORT = process.env.PORT || 3000;
+//   app.listen(PORT, () => {
+//     console.log(`Server is running on http://localhost:${PORT}`);
+//   });
+// }
+
+// // Exportación final para Vercel
+// export default serverless(app);
+
