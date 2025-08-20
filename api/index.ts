@@ -683,12 +683,25 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         if (userError || !userData?.user) {
             return res.writeHead(401, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Token inválido o expirado' }));
         }
-
+        
+        const loggedInUserId = userData.user.id;
         const invitationId = pathname.split('/')[3];
+
         if (!invitationId) {
             return res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Falta el ID de la invitación' }));
         }
 
+        // === PASO CLAVE: OBTENER accessible_invitations DEL USUARIO LOGEADO ===
+        const { data: profileData, error: profileError } = await supabase
+            .from('users')
+            .select('accessible_invitations')
+            .eq('id', loggedInUserId)
+            .single();
+
+        if (profileError || !profileData || !Array.isArray(profileData.accessible_invitations) || !profileData.accessible_invitations.includes(invitationId)) {
+             return res.writeHead(403, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Acceso denegado. La invitación no pertenece a este usuario o no existe.' }));
+        }
+        
         const { data, error } = await supabase
             .from('rsvps')
             .select('*')
