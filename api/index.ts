@@ -491,38 +491,125 @@
 // export default serverless(app);
 
 
-import { IncomingMessage, ServerResponse } from 'http';
+import express from 'express';
+import cors from 'cors';
+import { createClient } from '@supabase/supabase-js';
+import serverless from 'serverless-http';
 
-export default async function handler(req: IncomingMessage, res: ServerResponse) {
-  const url = req.url || '/';
+// Verificar variables de entorno
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY;
 
-  if (url === '/') {
-    return res.setHeader('Content-Type', 'application/json').end(JSON.stringify({
-      message: 'Backend funcionando correctamente',
+if (!supabaseUrl || !supabaseKey) {
+  console.error('Variables de entorno de Supabase faltantes');
+}
+
+// Inicializar Supabase solo si las variables existen
+let supabase: any = null;
+if (supabaseUrl && supabaseKey) {
+  try {
+    supabase = createClient(supabaseUrl, supabaseKey);
+  } catch (error) {
+    console.error('Error al inicializar Supabase:', error);
+  }
+}
+
+const app = express();
+
+// Middleware básico
+app.use(cors({
+  origin: ['https://invitaciones-digitales-frontend.vercel.app', 'http://localhost:3000'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
+app.use(express.json({ limit: '10mb' }));
+
+// Timeout middleware
+app.use((req, res, next) => {
+  const timeout = setTimeout(() => {
+    if (!res.headersSent) {
+      res.status(408).json({ error: 'Request timeout' });
+    }
+  }, 25000);
+
+  res.on('finish', () => clearTimeout(timeout));
+  res.on('close', () => clearTimeout(timeout));
+  
+  next();
+});
+
+// Ruta principal
+app.get('/', async (req, res) => {
+  try {
+    res.status(200).json({ 
+      message: 'Backend con Express y Supabase funcionando',
       timestamp: new Date().toISOString(),
       status: 'healthy',
-      version: '1.0'
-    }));
+      version: '3.0',
+      supabase: supabase ? 'connected' : 'not_connected'
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Error interno del servidor' });
   }
+});
 
-  if (url === '/api/test') {
-    return res.setHeader('Content-Type', 'application/json').end(JSON.stringify({
-      message: 'API test endpoint funcionando',
-      method: req.method,
+// Test de conexión a Supabase
+app.get('/api/test-supabase', async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ 
+        error: 'Supabase no configurado',
+        hasUrl: !!process.env.SUPABASE_URL,
+        hasKey: !!process.env.SUPABASE_ANON_KEY
+      });
+    }
+
+    // Test query simple
+    const { data, error } = await supabase
+      .from('users')
+      .select('count')
+      .limit(1);
+
+    res.json({
+      message: 'Test de Supabase completado',
+      success: !error,
+      error: error?.message || null,
+      hasData: !!data,
       timestamp: new Date().toISOString()
-    }));
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      error: 'Error en test de Supabase',
+      message: error.message
+    });
   }
+});
+
+// Endpoint simple para obtener invitación (solo para probar)
+app.get('/api/invitation/:urlId', async (req, res) => {
+  const { urlId } = req.params;
   
-  if (url === '/health') {
-    return res.setHeader('Content-Type', 'application/json').end(JSON.stringify({
-      status: 'OK',
-      timestamp: new Date().toISOString()
-    }));
-  }
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase no configurado' });
+    }
 
-  // Si la URL no coincide con ninguna de las rutas
-  return res.setHeader('Content-Type', 'application/json').end(JSON.stringify({
-    message: 'Ruta no encontrada',
-    status: 404
-  }));
-}
+    const { data, error } = await supabase
+      .from('invitations')
+      .select('*')
+      .eq('url_id', urlId)
+      .single();
+      
+    if (error || !data) {
+      return res.status(404).json({ error: 'Invitación no encontrada' });
+    }
+    
+    res.status(200).json(data);
+  } catch (error: any) {
+    console.error('Error al obtener invitación:', error.message);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+export default serverless(app);
