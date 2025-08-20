@@ -490,23 +490,62 @@
 // // Exportación final para Vercel
 // export default serverless(app);
 
-export default async function handler(req: any, res: any) {
+
+import express from 'express';
+import cors from 'cors';
+import serverless from 'serverless-http';
+
+const app = express();
+
+// Middleware básico
+app.use(cors({
+  origin: ['https://invitaciones-digitales-frontend.vercel.app', 'http://localhost:3000'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
+app.use(express.json({ limit: '10mb' }));
+
+// Timeout middleware
+app.use((req, res, next) => {
+  const timeout = setTimeout(() => {
+    if (!res.headersSent) {
+      res.status(408).json({ error: 'Request timeout' });
+    }
+  }, 25000);
+
+  res.on('finish', () => clearTimeout(timeout));
+  res.on('close', () => clearTimeout(timeout));
+  
+  next();
+});
+
+// Rutas básicas
+app.get('/', async (req, res) => {
   try {
-    return res.status(200).json({
-      message: 'API funcionando',
-      method: req.method,
-      url: req.url,
+    res.status(200).json({ 
+      message: 'Backend con Express funcionando correctamente',
       timestamp: new Date().toISOString(),
-      env: {
-        hasSupabaseUrl: !!process.env.SUPABASE_URL,
-        hasSupabaseKey: !!process.env.SUPABASE_ANON_KEY,
-        hasJwtSecret: !!process.env.JWT_SECRET
-      }
+      status: 'healthy',
+      version: '2.0'
     });
-  } catch (error: any) {
-    return res.status(500).json({ 
-      error: 'Error interno', 
-      message: error.message 
-    });
+  } catch (error) {
+    res.status(500).json({ error: 'Error interno del servidor' });
   }
-}
+});
+
+// Test endpoint
+app.get('/api/test', (req, res) => {
+  res.json({
+    message: 'API test endpoint funcionando',
+    method: req.method,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
+export default serverless(app);
