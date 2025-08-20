@@ -737,16 +737,34 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
         const loggedInUserId = userData.user.id;
 
-        const { data, error } = await supabase
-            .from('invitations')
-            .select('*')
-            .eq('user_id', loggedInUserId);
+        // Paso clave: Obtener los IDs de las invitaciones accesibles para este usuario
+        const { data: profileData, error: profileError } = await supabase
+            .from('users')
+            .select('accessible_invitations')
+            .eq('id', loggedInUserId)
+            .single();
 
-        if (error) {
-            return res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Error al obtener las invitaciones del usuario', message: error.message }));
+        if (profileError || !profileData || !Array.isArray(profileData.accessible_invitations)) {
+             return res.writeHead(404, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'No se encontraron invitaciones para este usuario.' }));
+        }
+        
+        const accessibleInvitationIds = profileData.accessible_invitations;
+
+        if (accessibleInvitationIds.length === 0) {
+          return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify([]));
         }
 
-        return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(data));
+        // Obtener los datos de las invitaciones a partir de los IDs
+        const { data: invitations, error: invitationsError } = await supabase
+            .from('invitations')
+            .select('*')
+            .in('id', accessibleInvitationIds);
+
+        if (invitationsError) {
+            return res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Error al obtener las invitaciones.', message: invitationsError.message }));
+        }
+
+        return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(invitations));
     }
 
     // Ruta de prueba de Supabase (GET)
