@@ -702,6 +702,37 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       return res.writeHead(201, { 'Content-Type': 'application/json' }).end(JSON.stringify({ message: 'Asistencia registrada exitosamente', data }));
     }
 
+    // Ruta protegida para obtener asistencias (RSVP)
+    if (req.method === 'GET' && pathname && pathname.startsWith('/api/rsvps/')) {
+      const user = verifyToken(req);
+      if (!user) {
+        return res.writeHead(401, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'No autorizado' }));
+      }
+      
+      const invitationId = pathname.split('/')[3];
+      if (!invitationId) {
+        return res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Falta el ID de la invitación' }));
+      }
+
+      const { data, error } = await supabase
+        .from('rsvps')
+        .select('*')
+        .eq('invitation_id', invitationId);
+
+      if (error) {
+        return res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Error al obtener las asistencias', message: error.message }));
+      }
+
+      // También puedes obtener el conteo de participantes
+      const participantsCount = data.reduce((sum, rsvp) => sum + (rsvp.participants_count || 0), 0);
+
+      return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({
+        message: 'Asistencias obtenidas exitosamente',
+        rsvps: data,
+        participants_count: participantsCount
+      }));
+    }
+
     // Ruta de prueba de Supabase (GET)
     if (pathname === '/api/test-supabase') {
       const { data, error } = await supabase
