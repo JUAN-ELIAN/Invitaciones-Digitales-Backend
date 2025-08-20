@@ -668,8 +668,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     
       return res.writeHead(201, { 'Content-Type': 'application/json' }).end(JSON.stringify({ message: 'Asistencia registrada exitosamente', data }));
     }
-
-    // Ruta protegida para obtener asistencias (RSVP) - Lógica corregida
+    
+    // Ruta protegida para obtener asistencias (RSVP)
     if (req.method === 'GET' && pathname && pathname.startsWith('/api/rsvps/')) {
         const authHeader = req.headers.authorization;
         const token = authHeader?.split(' ')[1];
