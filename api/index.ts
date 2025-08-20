@@ -491,125 +491,102 @@
 // export default serverless(app);
 
 
-import express from 'express';
-import cors from 'cors';
+import { IncomingMessage, ServerResponse } from 'http';
 import { createClient } from '@supabase/supabase-js';
-import serverless from 'serverless-http';
+import { parse } from 'url';
 
-// Verificar variables de entorno
+// Inicializar Supabase client
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
 
+// Asegúrate de que las variables de entorno están configuradas
 if (!supabaseUrl || !supabaseKey) {
-  console.error('Variables de entorno de Supabase faltantes');
+  throw new Error('Las variables de entorno de Supabase no están configuradas.');
 }
 
-// Inicializar Supabase solo si las variables existen
-let supabase: any = null;
-if (supabaseUrl && supabaseKey) {
-  try {
-    supabase = createClient(supabaseUrl, supabaseKey);
-  } catch (error) {
-    console.error('Error al inicializar Supabase:', error);
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+// Función para manejar las solicitudes
+export default async function handler(req: IncomingMessage, res: ServerResponse) {
+  // Configuración de CORS
+  res.setHeader('Access-Control-Allow-Origin', 'https://invitaciones-digitales-frontend.vercel.app');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  // Manejar solicitudes OPTIONS (preflight)
+  if (req.method === 'OPTIONS') {
+    return res.writeHead(204).end();
   }
-}
 
-const app = express();
+  // Parsear la URL para obtener el path y los parámetros
+  const { pathname } = parse(req.url || '/', true);
 
-// Middleware básico
-app.use(cors({
-  origin: ['https://invitaciones-digitales-frontend.vercel.app', 'http://localhost:3000'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
-
-app.use(express.json({ limit: '10mb' }));
-
-// Timeout middleware
-app.use((req, res, next) => {
-  const timeout = setTimeout(() => {
-    if (!res.headersSent) {
-      res.status(408).json({ error: 'Request timeout' });
-    }
-  }, 25000);
-
-  res.on('finish', () => clearTimeout(timeout));
-  res.on('close', () => clearTimeout(timeout));
-  
-  next();
-});
-
-// Ruta principal
-app.get('/', async (req, res) => {
   try {
-    res.status(200).json({ 
-      message: 'Backend con Express y Supabase funcionando',
-      timestamp: new Date().toISOString(),
-      status: 'healthy',
-      version: '3.0',
-      supabase: supabase ? 'connected' : 'not_connected'
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Error interno del servidor' });
-  }
-});
-
-// Test de conexión a Supabase
-app.get('/api/test-supabase', async (req, res) => {
-  try {
-    if (!supabase) {
-      return res.status(500).json({ 
-        error: 'Supabase no configurado',
-        hasUrl: !!process.env.SUPABASE_URL,
-        hasKey: !!process.env.SUPABASE_ANON_KEY
-      });
+    // Manejar diferentes rutas
+    if (pathname === '/') {
+      return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({
+        message: 'Backend funcionando correctamente',
+        timestamp: new Date().toISOString(),
+        status: 'healthy',
+        version: '1.0'
+      }));
     }
 
-    // Test query simple
-    const { data, error } = await supabase
-      .from('users')
-      .select('count')
-      .limit(1);
+    if (pathname === '/api/test-supabase') {
+      if (!supabase) {
+        return res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ 
+          error: 'Supabase no configurado',
+          hasUrl: !!process.env.SUPABASE_URL,
+          hasKey: !!process.env.SUPABASE_ANON_KEY
+        }));
+      }
 
-    res.json({
-      message: 'Test de Supabase completado',
-      success: !error,
-      error: error?.message || null,
-      hasData: !!data,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error: any) {
-    res.status(500).json({
-      error: 'Error en test de Supabase',
-      message: error.message
-    });
-  }
-});
+      const { data, error } = await supabase
+        .from('users')
+        .select('count')
+        .limit(1);
 
-// Endpoint simple para obtener invitación (solo para probar)
-app.get('/api/invitation/:urlId', async (req, res) => {
-  const { urlId } = req.params;
-  
-  try {
-    if (!supabase) {
-      return res.status(500).json({ error: 'Supabase no configurado' });
+      return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({
+        message: 'Test de Supabase completado',
+        success: !error,
+        error: error?.message || null,
+        hasData: !!data,
+        timestamp: new Date().toISOString()
+      }));
     }
 
-    const { data, error } = await supabase
-      .from('invitations')
-      .select('*')
-      .eq('url_id', urlId)
-      .single();
+    // Ruta con parámetro dinámico: /api/invitation/:urlId
+    if (pathname && pathname.startsWith('/api/invitation/')) {
+      const urlId = pathname.split('/')[3];
       
-    if (error || !data) {
-      return res.status(404).json({ error: 'Invitación no encontrada' });
-    }
-    
-    res.status(200).json(data);
-  } catch (error: any) {
-    console.error('Error al obtener invitación:', error.message);
-    res.status(500).json({ error: 'Error interno del servidor' });
-  }
-});
+      if (!supabase) {
+        return res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Supabase no configurado' }));
+      }
 
-export default serverless(app);
+      const { data, error } = await supabase
+        .from('invitations')
+        .select('*')
+        .eq('url_id', urlId)
+        .single();
+        
+      if (error || !data) {
+        return res.writeHead(404, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Invitación no encontrada' }));
+      }
+      
+      return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(data));
+    }
+
+    // Si la URL no coincide con ninguna de las rutas
+    return res.writeHead(404, { 'Content-Type': 'application/json' }).end(JSON.stringify({
+      message: 'Ruta no encontrada',
+      status: 404
+    }));
+    
+  } catch (error: any) {
+    console.error('Error en el handler:', error.message);
+    return res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ 
+      error: 'Error interno del servidor', 
+      message: error.message 
+    }));
+  }
+}
