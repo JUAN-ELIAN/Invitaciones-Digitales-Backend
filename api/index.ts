@@ -22,12 +22,6 @@ interface Rsvp {
 
 const app = express();
 
-app.get('/', (_req, res) => {
-  res.json({ message: 'Backend funcionando correctamente' });
-});
-
-const router = express.Router();
-
 app.use(cors({
   origin: 'https://invitaciones-digitales-frontend.vercel.app',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
@@ -38,6 +32,12 @@ app.use(express.json());
 
 // Aplica el middleware antes de las rutas.
 app.use(supabaseMiddleware);
+
+const router = express.Router();
+
+app.get('/', (_req, res) => {
+  res.json({ message: 'Backend funcionando correctamente' });
+});
 
 // Endpoint para registrar una nueva solicitud de acceso
 router.post('/register', async (req, res) => {
