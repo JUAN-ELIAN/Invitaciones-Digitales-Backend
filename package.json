@@ -1,16 +1,11 @@
 {
   "name": "invitaciones-digitales-backend",
   "version": "1.0.0",
-  "description": "Backend for digital invitations system",
+  "description": "Backend para invitaciones digitales",
   "main": "api/index.ts",
-  "engines": {
-    "node": "22.x"
-  },
   "scripts": {
     "dev": "vercel dev",
-    "build": "echo 'No build step required - serverless API'",
-    "start": "node api/index.js",
-    "vercel-build": "echo 'API build completed - no static files generated'"
+    "deploy": "vercel"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.38.0",
@@ -24,11 +19,15 @@
     "serverless-http": "^3.2.0"
   },
   "devDependencies": {
-    "@types/bcrypt": "^5.0.2",
-    "@types/cors": "^2.8.17",
-    "@types/express": "^4.17.21",
-    "@types/jsonwebtoken": "^9.0.5",
-    "@types/node": "^20.10.0",
-    "typescript": "^5.3.0"
+    "@types/bcrypt": "^5.0.0",
+    "@types/cors": "^2.8.14",
+    "@types/express": "^4.17.17",
+    "@types/jsonwebtoken": "^9.0.3",
+    "@types/node": "^20.5.0",
+    "nodemon": "^3.0.1",
+    "typescript": "^5.1.6"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
