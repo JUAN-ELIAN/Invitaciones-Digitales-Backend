@@ -490,7 +490,6 @@
 // // Exportación final para Vercel
 // export default serverless(app);
 
-
 import { IncomingMessage, ServerResponse } from 'http';
 import { createClient } from '@supabase/supabase-js';
 import { parse } from 'url';
@@ -541,8 +540,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         body += chunk;
       }
 
-      const { email, password, name } = JSON.parse(body);
-      if (!email || !password || !name) {
+      const { email, password } = JSON.parse(body);
+      if (!email || !password) {
         return res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Faltan campos obligatorios' }));
       }
 
@@ -551,7 +550,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
       const { data, error } = await supabase
         .from('users')
-        .insert([{ email, password: hashedPassword, name }]);
+        .insert([{ email, password_hash: hashedPassword }]);
 
       if (error) {
         return res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Error al registrar el usuario', message: error.message }));
