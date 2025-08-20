@@ -491,61 +491,38 @@
 // export default serverless(app);
 
 
-import express from 'express';
-import cors from 'cors';
-import serverless from 'serverless-http';
+import { IncomingMessage, ServerResponse } from 'http';
 
-const app = express();
+export default async function handler(req: IncomingMessage, res: ServerResponse) {
+  const url = req.url || '/';
 
-// Middleware básico
-app.use(cors({
-  origin: ['https://invitaciones-digitales-frontend.vercel.app', 'http://localhost:3000'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
-
-app.use(express.json({ limit: '10mb' }));
-
-// Timeout middleware
-app.use((req, res, next) => {
-  const timeout = setTimeout(() => {
-    if (!res.headersSent) {
-      res.status(408).json({ error: 'Request timeout' });
-    }
-  }, 25000);
-
-  res.on('finish', () => clearTimeout(timeout));
-  res.on('close', () => clearTimeout(timeout));
-  
-  next();
-});
-
-// Rutas básicas
-app.get('/', async (req, res) => {
-  try {
-    res.status(200).json({ 
-      message: 'Backend con Express funcionando correctamente',
+  if (url === '/') {
+    return res.setHeader('Content-Type', 'application/json').end(JSON.stringify({
+      message: 'Backend funcionando correctamente',
       timestamp: new Date().toISOString(),
       status: 'healthy',
-      version: '2.0'
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Error interno del servidor' });
+      version: '1.0'
+    }));
   }
-});
 
-// Test endpoint
-app.get('/api/test', (req, res) => {
-  res.json({
-    message: 'API test endpoint funcionando',
-    method: req.method,
-    timestamp: new Date().toISOString()
-  });
-});
+  if (url === '/api/test') {
+    return res.setHeader('Content-Type', 'application/json').end(JSON.stringify({
+      message: 'API test endpoint funcionando',
+      method: req.method,
+      timestamp: new Date().toISOString()
+    }));
+  }
+  
+  if (url === '/health') {
+    return res.setHeader('Content-Type', 'application/json').end(JSON.stringify({
+      status: 'OK',
+      timestamp: new Date().toISOString()
+    }));
+  }
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
-});
-
-export default serverless(app);
+  // Si la URL no coincide con ninguna de las rutas
+  return res.setHeader('Content-Type', 'application/json').end(JSON.stringify({
+    message: 'Ruta no encontrada',
+    status: 404
+  }));
+}
