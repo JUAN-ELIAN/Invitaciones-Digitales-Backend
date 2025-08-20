@@ -519,6 +519,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     return res.writeHead(204).end();
   }
 
+  // --- ¡depuración! ---
+  console.log('DEBUG: Petición recibida en el backend');
+  console.log('DEBUG: URL de la petición:', req.url);
+  console.log('DEBUG: Cabecera Authorization recibida:', req.headers.authorization);
+
   // Parsear la URL para enrutamiento
   const { pathname } = parse(req.url || '/', true);
 
