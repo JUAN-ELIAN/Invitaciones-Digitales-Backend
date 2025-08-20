@@ -494,6 +494,7 @@ import { IncomingMessage, ServerResponse } from 'http';
 import { createClient } from '@supabase/supabase-js';
 import { parse } from 'url';
 import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 
 // Inicializar Supabase client
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -557,6 +558,45 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       }
 
       return res.writeHead(201, { 'Content-Type': 'application/json' }).end(JSON.stringify({ message: 'Usuario registrado exitosamente', data }));
+    }
+
+    // Ruta de login (POST)
+    if (req.method === 'POST' && pathname === '/api/login') {
+      let body = '';
+      for await (const chunk of req) {
+        body += chunk;
+      }
+
+      const { email, password } = JSON.parse(body);
+      if (!email || !password) {
+        return res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Faltan campos obligatorios' }));
+      }
+
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', email)
+        .single();
+
+      if (userError || !userData) {
+        return res.writeHead(401, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Credenciales inválidas' }));
+      }
+
+      const passwordMatch = await bcrypt.compare(password, userData.password_hash);
+
+      if (!passwordMatch) {
+        return res.writeHead(401, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Credenciales inválidas' }));
+      }
+
+      // Generar JWT
+      const jwtSecret = process.env.JWT_SECRET;
+      if (!jwtSecret) {
+        return res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'JWT_SECRET no configurado' }));
+      }
+
+      const token = jwt.sign({ userId: userData.id, email: userData.email }, jwtSecret, { expiresIn: '1h' });
+
+      return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ message: 'Login exitoso', token }));
     }
 
     // Ruta de prueba de Supabase (GET)
