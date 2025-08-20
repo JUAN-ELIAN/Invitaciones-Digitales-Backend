@@ -632,6 +632,76 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       }));
     }
 
+    // Ruta para crear una invitación (POST) - Ahora es pública
+    if (req.method === 'POST' && pathname === '/api/invitations') {
+      let body = '';
+      for await (const chunk of req) {
+        body += chunk;
+      }
+
+      const { wedding_date, wedding_location, url_id, is_active } = JSON.parse(body);
+      if (!wedding_date || !wedding_location || !url_id) {
+        return res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Faltan campos obligatorios' }));
+      }
+
+      const { data, error } = await supabase
+        .from('invitations')
+        .insert([{
+          wedding_date,
+          wedding_location,
+          url_id,
+          is_active: is_active ?? true
+        }]);
+
+      if (error) {
+        return res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Error al crear la invitación', message: error.message }));
+      }
+
+      return res.writeHead(201, { 'Content-Type': 'application/json' }).end(JSON.stringify({ message: 'Invitación creada exitosamente', data }));
+    }
+
+    // Ruta para registrar una asistencia (RSVP)
+    if (req.method === 'POST' && pathname === '/api/rsvp') {
+      let body = '';
+      for await (const chunk of req) {
+        body += chunk;
+      }
+    
+      const {
+        invitation_id,
+        names,
+        participants_count,
+        email,
+        phone,
+        observations,
+        confirmed_attendance,
+        not_attending
+      } = JSON.parse(body);
+    
+      if (!invitation_id || !names || typeof confirmed_attendance === 'undefined') {
+        return res.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Faltan campos obligatorios' }));
+      }
+    
+      const { data, error } = await supabase
+        .from('rsvps')
+        .insert([{
+          invitation_id,
+          names,
+          participants_count,
+          email,
+          phone,
+          observations,
+          confirmed_attendance,
+          not_attending
+        }]);
+    
+      if (error) {
+        return res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Error al registrar la asistencia', message: error.message }));
+      }
+    
+      return res.writeHead(201, { 'Content-Type': 'application/json' }).end(JSON.stringify({ message: 'Asistencia registrada exitosamente', data }));
+    }
+
     // Ruta de prueba de Supabase (GET)
     if (pathname === '/api/test-supabase') {
       const { data, error } = await supabase
