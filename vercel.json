@@ -1,27 +1,8 @@
 
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "api/index.ts",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/api"
-    }
-  ],
-  "env": {
-    "SUPABASE_URL": "@supabase-url",
-    "SUPABASE_SERVICE_ROLE_KEY": "@supabase-service-role-key"
-},
   "functions": {
     "api/index.ts": {
-      "memory": 512,
       "maxDuration": 10
     }
-  },
-  "regions": ["all"]
+  }
 }
