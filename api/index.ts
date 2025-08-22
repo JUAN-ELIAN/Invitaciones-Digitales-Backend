@@ -321,7 +321,7 @@
 //   if (token == null || typeof token !== 'string') {
 //     return res.sendStatus(401);
 //   }
-  
+//   
 //   jwt.verify(token, process.env.JWT_SECRET as string, (err: any, user: any) => {
 //     if (err) {
 //       return res.sendStatus(403);
@@ -819,13 +819,15 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
             .end(JSON.stringify({ error: 'Error al obtener las asistencias', message: error.message }));
         }
 
-        const participantsCount = data.reduce((sum, rsvp) => sum + (rsvp.participants_count || 0), 0);
+        const participantsCount = data.filter(rsvp => rsvp.confirmed_attendance).reduce((sum, rsvp) => sum + (rsvp.participants_count || 0), 0);
+        const notAttendingCount = data.filter(rsvp => rsvp.not_attending).reduce((sum, rsvp) => sum + (rsvp.participants_count || 0), 0);
 
         return res.writeHead(200, { 'Content-Type': 'application/json' })
           .end(JSON.stringify({
             message: 'Asistencias obtenidas exitosamente',
             rsvps: data,
-            participants_count: participantsCount
+            participants_count: participantsCount,
+            not_attending_count: notAttendingCount
           }));
       } catch (error) {
         console.error('Error de autenticación:', error);
