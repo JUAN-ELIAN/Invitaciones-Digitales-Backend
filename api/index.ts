@@ -732,7 +732,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         phone,
         observations,
         confirmed_attendance,
-        not_attending
+        not_attending,
+        song_suggestions
       } = JSON.parse(body);
     
       if (!invitation_id || !names || typeof confirmed_attendance === 'undefined') {
@@ -740,19 +741,25 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
           .end(JSON.stringify({ error: 'Faltan campos obligatorios' }));
       }
     
+      const rsvpData: any = {
+        invitation_id,
+        names,
+        participants_count,
+        email,
+        phone,
+        observations,
+        confirmed_attendance,
+        not_attending,
+      };
+
+      if (song_suggestions && typeof song_suggestions === 'string') {
+        rsvpData.song_suggestions = song_suggestions.trim().slice(0, 255);
+      }
+
       const { data, error } = await supabase
         .from('rsvps')
-        .insert([{
-          invitation_id,
-          names,
-          participants_count,
-          email,
-          phone,
-          observations,
-          confirmed_attendance,
-          not_attending
-        }])
-        .select(); // Agregar select() para obtener los datos insertados
+        .insert([rsvpData])
+        .select();
     
       if (error) {
         return res.writeHead(500, { 'Content-Type': 'application/json' })
